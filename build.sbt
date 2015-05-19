@@ -1,0 +1,20 @@
+import AssemblyKeys._
+
+assemblySettings
+
+name := "template-scala-parallel-vanilla"
+
+organization := "io.prediction"
+
+resolvers += Resolver.mavenLocal
+
+scalaVersion := "2.10.5"
+
+libraryDependencies ++= Seq(
+  "io.prediction"    %% "core"          % pioVersion.value % "provided"
+    exclude("com.chuusai", "shapeless"),
+  "org.apache.spark" %% "spark-core"    % "1.3.0" % "provided"
+    exclude("com.chuusai", "shapeless"),
+  "org.xerial.snappy" % "snappy-java" % "1.1.1.7",
+  "com.chuusai" %% "shapeless" % "2.2.0-RC6",
+  "cml" %% "cml" % "0.1.2-SNAPSHOT")

@@ -1,0 +1,18 @@
+{
+  "id": "default",
+  "description": "Default settings",
+  "engineFactory": "sentiment.SentimentEngine",
+  "datasource": {
+    "params" : {
+      "appName": "INVALID_APP_NAME"
+    }
+  },
+  "algorithms": [
+    {
+      "name": "algo",
+      "params": {
+        "mult" : 1
+      }
+    }
+  ]
+}
