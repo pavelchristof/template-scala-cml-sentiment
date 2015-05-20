@@ -7,7 +7,7 @@ object Parser {
    * Parser a sentence into a tree.
    */
   def apply(sentence: String): Tree[String] =
-    toTree(sentence.trim.filter(_.isLetterOrDigit).split(" "))
+    toTree(sentence.trim.split(" ").map(_.filter(_.isLetterOrDigit).map(_.toLower)))
 
   def toTree(seq: Seq[String]): Tree[String] =
     seq match {

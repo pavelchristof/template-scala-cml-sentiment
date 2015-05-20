@@ -5,6 +5,7 @@ import io.prediction.data.storage.BiMap
 import org.apache.spark.SparkContext
 import grizzled.slf4j.Logger
 
+import scala.util.Random
 import scalaz._
 import Scalaz._
 
@@ -18,7 +19,7 @@ object Model {
   import shapeless.Nat
 
   type Word[A] = Constant[String, A]
-  implicit val word = Constant.concrete[String]("STOP")
+  implicit val word = Constant.concrete[String]
   implicit val strings = Enumerate.string(Enumerate.char)
   implicit val wordVector = algebra.Vector(Nat(5))
   implicit val wordVectorPair = algebra.Product[wordVector.Type, wordVector.Type]
@@ -26,16 +27,15 @@ object Model {
   implicit val vectorTree = algebra.Compose[Tree, wordVector.Type]
   implicit val output = algebra.Vector(Nat(3))
 
-  val model: cml.Model[wordTree.Type, output.Type] = Chain5(
+  val model: cml.Model[wordTree.Type, output.Type] = Chain4(
     FunctorMap[Tree, Word, wordVector.Type](
       Function[String, wordVector.Type]
     ) : cml.Model[wordTree.Type, vectorTree.Type],
     Reduce[Tree, wordVector.Type](Chain2(
-      LinearMap[wordVectorPair.Type, wordVector.Type],
+      AffineMap[wordVectorPair.Type, wordVector.Type],
       Pointwise[wordVector.Type](AnalyticMap.tanh)
     )) : cml.Model[vectorTree.Type, wordVector.Type],
-    LinearMap[wordVector.Type, output.Type],
-    Pointwise[output.Type](AnalyticMap.sigmoid),
+    AffineMap[wordVector.Type, output.Type],
     Softmax[output.Type]
   )
 
@@ -52,7 +52,7 @@ object Model {
 
     override def regularization[V[_], A](instance: V[A])(implicit an: Analytic[A], space: LocallyConcrete[V]): A = {
       import an.analyticSyntax._
-      _0 //fromDouble(0.01) * space.quadrance(instance)
+      fromDouble(0.01) * space.quadrance(instance)
     }
   }
 }
@@ -79,13 +79,23 @@ class Algorithm extends P2LAlgorithm[PreparedData, Model, Query, PredictedResult
 
     val optimizer = GradientDescent(
       model,
-      iterations = 1,
-      step = 1
+      iterations = 100,
+      step = 0.1
     )(wordTree.functor, output)
 
+    val rng = new Random()
+    val insts = for (i <- 0 until 1000)
+      yield model.fill(rng.nextDouble() * 2d - 1d).asInstanceOf[optimizer.model.Type[Double]]
+    //println(insts)
     implicit val diffEngine = ad.Forward
-    optimizer[Double](Vector(), dataSet, costFun) match {
-      case Vector(inst) => Model(inst.asInstanceOf[model.Type[Double]])
+    optimizer[Double](insts.toVector, dataSet, costFun) match {
+      case Vector(inst) => {
+        println(inst)
+        val i = inst.asInstanceOf[model.Type[Double]]
+        for (t <- dataSet)
+          println(model[Double](i)(t._1))
+        Model(i)
+      }
     }
   }
 

@@ -16,7 +16,7 @@ class DataSource(val dsp: DataSourceParams)
   def readTraining(sc: SparkContext): TrainingData = {
     TrainingData(Array(
       ("I think global warming is a real issue", PredictedResult(sentiment="Yes", confidence = 1)),
-      ("Jet fuel can't melt steel beams", PredictedResult(sentiment="No", confidence = 0.7))
+      ("Jet fuel can't melt steel beams", PredictedResult(sentiment="No", confidence = 1))
     ))
   }
 }
