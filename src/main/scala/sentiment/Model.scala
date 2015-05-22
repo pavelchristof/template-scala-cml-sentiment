@@ -141,7 +141,7 @@ class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Predict
         default = filler())
       // Optimizer returns a vector of (cost, instance) pairs. Here we select the instance with the lowest cost.
       .minBy(_._1)._2
-      // And unfortunetly we have to explicitely cast it to the right type. This is because scala doesn't know
+      // And unfortunately we have to explicitly cast it to the right type. This is because scala doesn't know
       // that model.Type = optimizer.model.Type, even thought it is quite obvious to us since model == optimizer.model.
       .asInstanceOf[model.Type[Double]]
     val endTime = System.currentTimeMillis()
