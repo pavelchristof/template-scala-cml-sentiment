@@ -11,7 +11,7 @@ import Scalaz._
 
 import cml._
 import cml.algebra.traits._
-import cml.algebra.Real._
+import cml.algebra.Instances._
 import cml.algebra.Constant
 
 object Model {
@@ -21,9 +21,10 @@ object Model {
   type Word[A] = Constant[String, A]
   implicit val word = Constant.concrete[String]
   implicit val strings = Enumerate.string(Enumerate.char)
-  implicit val wordVector = algebra.Vector(Nat(5))
+  implicit val wordVector = algebra.Vector(Nat(30))
   implicit val wordVectorPair = algebra.Product[wordVector.Type, wordVector.Type]
   implicit val wordTree = algebra.Compose[Tree, Word]
+  implicit val wordTreeFunctor = wordTree.functor
   implicit val vectorTree = algebra.Compose[Tree, wordVector.Type]
   implicit val output = algebra.Vector(Nat(3))
 
@@ -33,7 +34,7 @@ object Model {
     ) : cml.Model[wordTree.Type, vectorTree.Type],
     Reduce[Tree, wordVector.Type](Chain2(
       AffineMap[wordVectorPair.Type, wordVector.Type],
-      Pointwise[wordVector.Type](AnalyticMap.tanh)
+      Pointwise[wordVector.Type](AnalyticMap.sigmoid)
     )) : cml.Model[vectorTree.Type, wordVector.Type],
     AffineMap[wordVector.Type, output.Type],
     Softmax[output.Type]
@@ -45,9 +46,9 @@ object Model {
       import an.analyticSyntax._
       val eps = fromDouble(0.0001)
       val j = ^(sample.expected, sample.actual){ case (e, a) => {
-        - (e * (a + eps).log + (_1 - e) * (_1 - a + eps).log)
+        e * (a + eps).log
       }}
-      output.sum(j)
+      -output.sum(j)
     }
 
     override def regularization[V[_], A](instance: V[A])(implicit an: Analytic[A], space: LocallyConcrete[V]): A = {
@@ -70,33 +71,46 @@ class Algorithm extends P2LAlgorithm[PreparedData, Model, Query, PredictedResult
     import Model._
 
     // Convert the data to our input format.
-    val dataSet = data.sentences.map{ case (tree, expected) => {
+    val dataSet = data.sentences.map { case (tree, expected) => {
       val index = sentiments(expected.sentiment)
       val in: wordTree.Type[Double] = tree.map(Constant(_))
       val out: output.Type[Double] = output.tabulateLC(Map(index -> expected.confidence))
       (in, out)
     }}
 
-    val optimizer = GradientDescent(
-      model,
-      iterations = 100,
-      step = 0.1
-    )(wordTree.functor, output)
+    val optimizer = MultiOpt(
+      populationSize = 4,
+      optimizer = GradientDescent(
+        model,
+        iterations = 200,
+        gradTrans = Stabilize.andThen(AdaGrad)
+      )
+    )
 
     val rng = new Random()
-    val insts = for (i <- 0 until 1000)
-      yield model.fill(rng.nextDouble() * 2d - 1d).asInstanceOf[optimizer.model.Type[Double]]
-    //println(insts)
-    implicit val diffEngine = ad.Forward
-    optimizer[Double](insts.toVector, dataSet, costFun) match {
-      case Vector(inst) => {
-        println(inst)
-        val i = inst.asInstanceOf[model.Type[Double]]
-        for (t <- dataSet)
-          println(model[Double](i)(t._1))
-        Model(i)
-      }
+    implicit val diffEngine = ad.Backward
+
+    val startTime = System.currentTimeMillis()
+    val inst = optimizer[Double](Vector(), dataSet, costFun, rng.nextDouble * 4d - 2d)
+      .minBy(_._1)
+      ._2
+      .asInstanceOf[model.Type[Double]]
+
+    val endTime = System.currentTimeMillis()
+
+    for (t <- dataSet) {
+      val sentence = t._1.map(_.value).foldl1(x => y => x + " " + y)
+      val value = model(inst)(t._1)
+      val prediction = value.toList.zipWithIndex.maxBy(_._1)
+      val res = PredictedResult(
+        sentiment = sentiments.inverse(prediction._2),
+        confidence = prediction._1
+      )
+      println(s"${sentence} -> ${res}")
     }
+
+    println(s"Time: ${endTime - startTime}ms")
+    Model(inst)
   }
 
   def predict(model: Model, query: Query): PredictedResult = {
