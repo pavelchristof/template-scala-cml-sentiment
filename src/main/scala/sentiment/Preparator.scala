@@ -11,10 +11,10 @@ class Preparator
   extends PPreparator[TrainingData, PreparedData] {
 
   def prepare(sc: SparkContext, trainingData: TrainingData): PreparedData = {
-    new PreparedData(sentences = trainingData.sentences.map { case (a, b) => (Parser(a), b) })
+    new PreparedData(sentences = trainingData.sentences.map { case (a, b) => (Parser(a.sentence), b) })
   }
 }
 
 class PreparedData(
-  val sentences: Array[(Tree[String], PredictedResult)]
+  val sentences: Array[(Tree[String], Result)]
 ) extends Serializable

@@ -3,11 +3,11 @@ package sentiment
 import io.prediction.controller.LServing
 
 class Serving
-  extends LServing[Query, PredictedResult] {
+  extends LServing[Query, Result] {
 
   override
   def serve(query: Query,
-    predictedResults: Seq[PredictedResult]): PredictedResult = {
+    predictedResults: Seq[Result]): Result = {
     predictedResults.head
   }
 }

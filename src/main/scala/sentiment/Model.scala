@@ -25,7 +25,7 @@ object Model {
   type Word[A] = Constant[String, A]
   implicit val wordConcrete = Constant.concrete[String]
   implicit val strings = Enumerate.string(Enumerate.char)
-  implicit val wordVector = algebra.Vector(Nat(30))
+  implicit val wordVector = algebra.Vector(Nat(5))
   implicit val wordVectorPair = algebra.Product[wordVector.Type, wordVector.Type]
   implicit val wordTree = algebra.Compose[Tree, Word]
   implicit val wordTreeFunctor = wordTree.functor
@@ -43,7 +43,7 @@ object Model {
     // Now fold the tree using matrix multiplication with bias (an affine map) and sigmoid activation.
     Reduce[Tree, wordVector.Type](Chain2(
       AffineMap[wordVectorPair.Type, wordVector.Type],
-      Pointwise[wordVector.Type](AnalyticMap.sigmoid)
+      Pointwise[wordVector.Type](AnalyticMap.tanh)
     )) : cml.Model[vectorTree.Type, wordVector.Type],
     // The next layer maps the word vector to a sentiment vector.
     AffineMap[wordVector.Type, sentimentVec.Type],
@@ -89,7 +89,7 @@ object Model {
     populationSize = 4,
     optimizer = GradientDescent(
       model,
-      iterations = 200,
+      iterations = 50,
       gradTrans = Stabilize.andThen(AdaGrad)
     )
   )
@@ -107,7 +107,7 @@ case class ModelInstance (
   get: Model.model.Type[Double]
 )
 
-class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, PredictedResult] {
+class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Result] {
 
   @transient lazy val logger = Logger[this.type]
 
@@ -116,6 +116,8 @@ class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Predict
    */
   def train(sc: SparkContext, data: PreparedData): ModelInstance = {
     import Model._
+
+    println(data.sentences.length)
 
     // First we have to convert the data set to our model's input format.
     val dataSet = data.sentences.map { case (tree, expected) => {
@@ -129,7 +131,6 @@ class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Predict
     val rng = new Random()
     val filler = () => rng.nextDouble * 4d - 2d
 
-    val startTime = System.currentTimeMillis()
     // Run the optimizer!
     val inst =
       optimizer[Double](
@@ -144,20 +145,6 @@ class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Predict
       // And unfortunately we have to explicitly cast it to the right type. This is because scala doesn't know
       // that model.Type = optimizer.model.Type, even thought it is quite obvious to us since model == optimizer.model.
       .asInstanceOf[model.Type[Double]]
-    val endTime = System.currentTimeMillis()
-
-    // Print the predictions on the training set for testing.
-    for (t <- dataSet) {
-      val sentence = t._1.map(_.value).foldl1(x => y => x + " " + y)
-      val value = model(inst)(t._1)
-      val prediction = value.toList.zipWithIndex.maxBy(_._1)
-      val res = PredictedResult(
-        sentiment = sentiments.inverse(prediction._2),
-        confidence = prediction._1
-      )
-      println(s"$sentence -> $res")
-    }
-    println(s"Time: ${endTime - startTime}ms")
 
     ModelInstance(inst)
   }
@@ -165,7 +152,7 @@ class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Predict
   /**
    * Queries the model.
    */
-  def predict(modelInstance: ModelInstance, query: Query): PredictedResult = {
+  def predict(modelInstance: ModelInstance, query: Query): Result = {
     import Model._
     import sentimentVec.traverseSyntax._
 
@@ -177,7 +164,7 @@ class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Predict
 
     // Extract the class with highest confidence.
     val prediction = value.toList.zipWithIndex.maxBy(_._1)
-    PredictedResult(
+    Result(
       sentiment = sentiments.inverse(prediction._2),
       confidence = prediction._1
     )

@@ -17,4 +17,5 @@ libraryDependencies ++= Seq(
     exclude("com.chuusai", "shapeless"),
   "org.xerial.snappy" % "snappy-java" % "1.1.1.7",
   "com.chuusai" %% "shapeless" % "2.2.0-RC6",
-  "cml" %% "cml" % "0.1.2-SNAPSHOT")
+  "cml" %% "cml" % "0.1.2-SNAPSHOT",
+  "com.github.tototoshi" %% "scala-csv" % "1.2.1")
