@@ -6,7 +6,10 @@ case class Query(sentence: String) extends Serializable
 
 case class SentenceTree (
   label: String,
-  sentiment: Double,
+
+  yes: Double,
+  no: Double,
+
   children: Seq[SentenceTree]
 ) extends Serializable
 

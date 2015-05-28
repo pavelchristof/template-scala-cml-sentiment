@@ -3,17 +3,16 @@ package sentiment
 import io.prediction.controller._
 
 case class Accuracy ()
-  extends AverageMetric[EmptyEvaluationInfo, Query, SentenceTree, Double] {
-  def calculate(query: Query, predicted: SentenceTree, actual: Double): Double =
-    if (toLabel(predicted.sentiment) == toLabel(actual)) 1.0 else 0.0
+  extends AverageMetric[EmptyEvaluationInfo, Query, SentenceTree, String] {
+  def calculate(query: Query, predicted: SentenceTree, actual: String): Double = {
+    val p = Map(
+      "Yes" -> predicted.yes,
+      "No" -> predicted.no,
+      "NA" -> (1 - predicted.yes - predicted.no)
+    )
 
-  def toLabel(sent: Double) =
-    if (sent * 3 >= 1)
-      "Yes"
-    else if (sent * 3 <= -1)
-      "No"
-    else
-      "N/A"
+    if (p.maxBy(_._2)._1 == actual) 1d else 0d
+  }
 }
 
 object SentimentEvaluation extends Evaluation with EngineParamsGenerator {

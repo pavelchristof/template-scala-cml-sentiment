@@ -6,12 +6,14 @@ from predictionio import EngineClient
 def add_colors(node):
     if len(node["children"]) > 0:
         node["children"] = map(add_colors, node["children"])
-    if node["sentiment"] >= 0.0:
-        gb = 255 - int(node["sentiment"] * 255.0)
-        node["color"] = "#FF{:02X}{:02X}".format(gb, gb)
+    if node["yes"] > node["no"] and 2 * node["yes"] > 1 - node["no"]:
+        c = 255 - int(node["yes"] * 255.0)
+        node["color"] = "#{:02X}FF{:02X}".format(c, c)
+    elif node["no"] > node["yes"] and 2 * node["no"] > 1 - node["yes"]:
+        c = 255 - int(node["no"] * 255.0)
+        node["color"] = "#FF{:02X}{:02X}".format(c, c)
     else:
-        rb = 255 - int(node["sentiment"] * -255.0)
-        node["color"] = "#FF{:02X}{:02X}".format(rb, rb)
+        node["color"] = "white"
     return node
 
 

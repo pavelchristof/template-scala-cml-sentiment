@@ -13,5 +13,5 @@ class Preparator
 }
 
 class PreparedData(
-  val sentences: Array[(Tree, Double)]
+  val sentences: Array[(Tree, String)]
 ) extends Serializable
