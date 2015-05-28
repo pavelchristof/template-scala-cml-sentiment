@@ -1,0 +1,13 @@
+{% extends "sentiment/base.html" %}
+
+{% block content %}
+    <div style="display: flex">
+        <div style="flex-grow: 1"></div>
+        <form method="POST">
+            {% csrf_token %}
+            <input type="text" name="sentence" placeholder="Enter a sentence...">
+            <input type="submit">
+        </form>
+        <div style="flex-grow: 1"></div>
+    </div>
+{% endblock %}

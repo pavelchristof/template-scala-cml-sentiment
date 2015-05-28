@@ -1,18 +1,49 @@
 package sentiment
 
+import edu.stanford.nlp.trees.Tree
 import io.prediction.controller.P2LAlgorithm
 import io.prediction.data.storage.BiMap
 import org.apache.spark.SparkContext
 import grizzled.slf4j.Logger
 
 import scala.util.Random
-import scalaz._
-import Scalaz._
+import scalaz.Scalaz._
 
 import cml._
 import cml.algebra.traits._
 import cml.algebra.Instances._
 import cml.algebra.Constant
+import cml.models._
+
+case class RNN[WordVec[_]] (
+  implicit concrete: Concrete[WordVec]
+) extends Model[({type T[A] = Constant[Tree, A]})#T, WordVec] {
+  val wordVecPair = algebra.Product[WordVec, WordVec]()(concrete, concrete)
+  val wordVecMap = Function[String, WordVec]()(Enumerate.string(Enumerate.char), concrete)
+  val reducer = Chain2(
+    AffineMap[wordVecPair.Type, WordVec]()(wordVecPair, concrete),
+    Pointwise[WordVec](AnalyticMap.tanh)(concrete)
+  )
+
+  type Type[A] = (wordVecMap.Type[A], reducer.Type[A])
+
+  override def apply[A](inst: Type[A])(input: Constant[Tree, A])(implicit field: Analytic[A]): WordVec[A] = {
+    val node = input.value
+    if (node.isLeaf) {
+      wordVecMap(inst._1)(Constant(node.value()))
+    } else {
+      node.children
+        .map(t => apply(inst)(Constant(t)))
+        .reduceLeft[WordVec[A]](reducer(inst._2)(_, _))
+    }
+  }
+
+  override implicit val space: LocallyConcrete[Type] =
+    algebra.Product.locallyConcrete[wordVecMap.Type, reducer.Type](wordVecMap.space, reducer.space)
+
+  override def fill[A](x: => A)(implicit a: Additive[A]): Type[A] =
+    (wordVecMap.fill(x), reducer.fill(x))
+}
 
 object Model {
   import cml.models._
@@ -22,60 +53,47 @@ object Model {
   /*
    * First we declare types and implicits that we'll use in the model.
    */
-  type Word[A] = Constant[String, A]
-  implicit val wordConcrete = Constant.concrete[String]
-  implicit val strings = Enumerate.string(Enumerate.char)
+  type WrappedTree[A] = Constant[Tree, A]
+  implicit val treeFunctor = Constant.functor[Tree]
   implicit val wordVector = algebra.Vector(Nat(5))
-  implicit val wordVectorPair = algebra.Product[wordVector.Type, wordVector.Type]
-  implicit val wordTree = algebra.Compose[Tree, Word]
-  implicit val wordTreeFunctor = wordTree.functor
-  implicit val vectorTree = algebra.Compose[Tree, wordVector.Type]
-  implicit val sentimentVec = algebra.Vector(Nat(3))
+  implicit val output = algebra.Scalar
 
   /**
-   * A recurisve neural network model.
+   * A recursive neural network model.
    */
-  val model: cml.Model[wordTree.Type, sentimentVec.Type] = Chain4(
-    // Firstly map words to word vectors.
-    FunctorMap[Tree, Word, wordVector.Type](
-      Function[String, wordVector.Type]
-    ) : cml.Model[wordTree.Type, vectorTree.Type],
-    // Now fold the tree using matrix multiplication with bias (an affine map) and sigmoid activation.
-    Reduce[Tree, wordVector.Type](Chain2(
-      AffineMap[wordVectorPair.Type, wordVector.Type],
-      Pointwise[wordVector.Type](AnalyticMap.tanh)
-    )) : cml.Model[vectorTree.Type, wordVector.Type],
+  val model: Model[WrappedTree, output.Type] = Chain3(
+    // First we reduce the sentence tree into a vector.
+    RNN[wordVector.Type]: Model[WrappedTree, wordVector.Type],
     // The next layer maps the word vector to a sentiment vector.
-    AffineMap[wordVector.Type, sentimentVec.Type],
-    // Finally we apply softmax to get probabilities.
-    Softmax[sentimentVec.Type]
+    AffineMap[wordVector.Type, output.Type],
+    // Finally we apply a modified sigmoid that assumes values in the range [-1, 1].
+    Pointwise[output.Type](new AnalyticMap {
+      override def apply[F](x: F)(implicit f: Analytic[F]): F = {
+        import f.analyticSyntax._
+        _1 - _2 / (_1 + (-x).exp)
+      }
+    })
   )
 
   /**
    * The cost function for our model.
    */
-  val costFun = new CostFun[wordTree.Type, sentimentVec.Type] {
+  val costFun = new CostFun[WrappedTree, output.Type] {
     /**
      * This function scores a single sample (input, expected output and actual output triple).
      *
      * The cost for the whole data set is assumed to be the mean of scores for each sample.
      */
-    override def scoreSample[A](sample: Sample[wordTree.Type[A], sentimentVec.Type[A]])(implicit an: Analytic[A]): A = {
+    override def scoreSample[A](sample: Sample[WrappedTree[A], output.Type[A]])(implicit an: Analytic[A]): A = {
       import an.analyticSyntax._
-      val eps = fromDouble(0.0001)
-
-      // Softmax regression cost function. We add epsilon to prevent taking the log of 0.
-      val j = ^(sample.expected, sample.actual){ case (e, a) =>
-        e * (a + eps).log
-      }
-      -sentimentVec.sum(j)
+      (sample.expected - sample.actual).square
     }
 
     /**
      * Computes the regularization term for a model instance.
      */
     override def regularization[V[_], A](instance: V[A])(implicit an: Analytic[A], space: LocallyConcrete[V]): A =
-      an.mul(an.fromDouble(0.01), space.quadrance(instance))
+      an.mul(an.fromDouble(0.001), space.quadrance(instance))
   }
 
   /**
@@ -89,8 +107,8 @@ object Model {
     populationSize = 4,
     optimizer = GradientDescent(
       model,
-      iterations = 50,
-      gradTrans = Stabilize.andThen(AdaGrad)
+      iterations = 70,
+      gradTrans = Stabilize.andThen(AdaGrad).andThen(Scale(0.1))
     )
   )
 
@@ -107,7 +125,7 @@ case class ModelInstance (
   get: Model.model.Type[Double]
 )
 
-class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Result] {
+class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, SentenceTree] {
 
   @transient lazy val logger = Logger[this.type]
 
@@ -121,15 +139,13 @@ class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Result]
 
     // First we have to convert the data set to our model's input format.
     val dataSet = data.sentences.map { case (tree, expected) => {
-      val index = sentiments(expected.sentiment)
-      val in: wordTree.Type[Double] = tree.map(Constant(_))
-      val out: sentimentVec.Type[Double] = sentimentVec.tabulateLC(Map(index -> expected.confidence))
-      (in, out)
+      val in: WrappedTree[Double] = Constant(tree)
+      (in, expected)
     }}
 
     // Value that the new model instances will be filled with.
     val rng = new Random()
-    val filler = () => rng.nextDouble * 4d - 2d
+    val filler = () => rng.nextDouble * 0.2d - 0.1d
 
     // Run the optimizer!
     val inst =
@@ -152,26 +168,17 @@ class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Result]
   /**
    * Queries the model.
    */
-  def predict(modelInstance: ModelInstance, query: Query): Result = {
+  def predict(modelInstance: ModelInstance, query: Query): SentenceTree = {
     import Model._
-    import sentimentVec.traverseSyntax._
 
-    // Parse the sentence into a tree.
+    def process(node: Tree): SentenceTree =
+      SentenceTree(
+        label = node.value(),
+        sentiment = model(modelInstance.get)(Constant(node)),
+        children = node.children().map(process)
+      )
+
     val tree = Parser(query.sentence)
-
-    // Apply the model.
-    val value = model(modelInstance.get)(tree.map(Constant(_)))
-
-    // Extract the class with highest confidence.
-    val prediction = value.toList.zipWithIndex.maxBy(_._1)
-    Result(
-      sentiment = sentiments.inverse(prediction._2),
-      confidence = prediction._1
-    )
+    process(tree)
   }
-
-  /**
-   * A mapping between sentiment vector indices and sentiment labels.
-   */
-  val sentiments = BiMap.stringInt(Array("No", "Yes", "NA"))
 }

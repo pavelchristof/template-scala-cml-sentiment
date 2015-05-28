@@ -4,7 +4,11 @@ import io.prediction.controller.{Engine, EngineFactory}
 
 case class Query(sentence: String) extends Serializable
 
-case class Result(sentiment: String, confidence: Double) extends Serializable
+case class SentenceTree (
+  label: String,
+  sentiment: Double,
+  children: Seq[SentenceTree]
+) extends Serializable
 
 object SentimentEngine extends EngineFactory {
   def apply() = {

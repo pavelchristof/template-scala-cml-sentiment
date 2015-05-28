@@ -1,11 +1,8 @@
 package sentiment
 
+import edu.stanford.nlp.trees.Tree
 import io.prediction.controller.PPreparator
-import io.prediction.data.storage.Event
 import org.apache.spark.SparkContext
-import org.apache.spark.rdd.RDD
-
-import scalaz.Tree
 
 class Preparator
   extends PPreparator[TrainingData, PreparedData] {
@@ -16,5 +13,5 @@ class Preparator
 }
 
 class PreparedData(
-  val sentences: Array[(Tree[String], Result)]
+  val sentences: Array[(Tree, Double)]
 ) extends Serializable

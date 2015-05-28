@@ -1,0 +1,13 @@
+<span class="tree-label" style="background: {{ node.color }}; color: black;">{{node.label}}</span>
+
+{%if node.children %}
+    <ul>
+        {% for ch in node.children %}
+            <li>
+            {% with node=ch template_name="sentiment/tree.html" %}
+                {% include template_name %}
+            {% endwith %}
+            </li>
+        {% endfor %}
+    </ul>
+{%endif%}
