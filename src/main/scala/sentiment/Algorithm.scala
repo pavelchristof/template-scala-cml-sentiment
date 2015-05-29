@@ -43,8 +43,8 @@ class RNTN (params: RNTNParams) {
   implicit val wordVecPair = algebra.Product[wordVec.Type, wordVec.Type]
   implicit val wordVecPairPair = algebra.Product[wordVecPair.Type, wordVecPair.Type]
 
-  // Sentence tree not take a type parameter (because it doesn't depend on the field type). However model's input has
-  // to be a functor. We can create a functor from a tree by wrapping it in a constant functor.
+  // Sentence tree not take a type parameter (because it doesn't depend on the field type). However model's
+  // input has to be a functor. We'll wrap the tree in a constant functor to get around that.
   type WrappedTree[A] = Const[Tree, A]
 
   // Trees can be folded (reduced). We have to use the monomorphic variant, because Tree is not a functor - node values
@@ -65,22 +65,26 @@ class RNTN (params: RNTNParams) {
    */
   val model: Model[WrappedTree, sentimentVec.Type] = Chain3(
     // Map-reduce the tree getting a word vector as the result.
+    // The first parameter is the container type, the second is element type and the last is result type.
     MonoMapReduce[Tree, String, wordVec.Type](
       // We map each word to a word vector using a hash map.
       map = HashMap[String, wordVec.Type],
       // Then we reduce the pair with a model that takes two word vectors and returns one.
       // Type inference fails here and we have to provide the types of all immediate values.
       reduce = Chain3[wordVecPair.Type, wordVecPairPair.Type, wordVec.Type, wordVec.Type](
-        // Duplicate takes a single argument x and returns (x, x).
+        // Duplicate takes a single argument x (of type wordVecType.Type) and returns (x, x).
         Duplicate[wordVecPair.Type],
         // LinAffinMap is a function on two arguments: linear in the first and affine in the second. This is
         // equivalent to the sum of a bilinear form (on both arguments) and a linear form on the first argument.
+        // The first type parameter is the first argument's type, the second i the second argument's type and the
+        // last is the result type.
         LinAffinMap[wordVecPair.Type, wordVecPair.Type, wordVec.Type],
-        // Apply the activaton function.
+        // Apply the activaton function pointwise over the word vector.
         Pointwise[wordVec.Type](AnalyticMap.tanh)
       )
     ) : Model[WrappedTree, wordVec.Type],
-    // The next layer maps the word vector to a sentiment vector.
+    // We have a word vector now - we still have to classify it.
+    // The next layer maps the word vector to a sentiment vector using an affine map (i.e. linear map with bias).
     AffineMap[wordVec.Type, sentimentVec.Type],
     // Finally we apply softmax.
     Softmax[sentimentVec.Type]
