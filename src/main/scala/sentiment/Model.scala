@@ -1,101 +1,85 @@
 package sentiment
 
 import edu.stanford.nlp.trees.Tree
-import io.prediction.controller.P2LAlgorithm
+import io.prediction.controller.{Params, P2LAlgorithm}
 import io.prediction.data.storage.BiMap
 import org.apache.spark.SparkContext
 import grizzled.slf4j.Logger
 
 import scala.util.Random
-import scalaz.Functor
-import scalaz.Scalaz._
+import scalaz._
+import Scalaz._
 
 import cml._
 import cml.algebra.traits._
 import cml.algebra.Instances._
-import cml.algebra.Constant
 import cml.models._
+import cml.optimization._
 
-case class RNTN[WordVec[_]] (
-  implicit concrete: Concrete[WordVec]
-) extends Model[({type T[A] = Constant[Tree, A]})#T, WordVec] {
-  val wordVecPair = algebra.Product[WordVec, WordVec]()(concrete, concrete)
-  val wordVecMap = Function[String, WordVec]()(Enumerate.string(Enumerate.char), concrete)
-  val combiner = Chain3[wordVecPair.Type, algebra.Product[wordVecPair.Type, wordVecPair.Type]#Type, WordVec, WordVec](
-    Duplicate[wordVecPair.Type] : Model[wordVecPair.Type, algebra.Product[wordVecPair.Type, wordVecPair.Type]#Type],
-    LinAffinMap[wordVecPair.Type, wordVecPair.Type, WordVec]()(wordVecPair, wordVecPair, concrete)
-      : Model[algebra.Product[wordVecPair.Type, wordVecPair.Type]#Type, WordVec],
-    Pointwise[WordVec](AnalyticMap.tanh)(concrete)
-  )
+case class RNTNParams (
+  wordVecSize: Int,
+  stepSize: Double,
+  iterations: Int,
+  regularizationCoeff: Double,
+  noise: Double
+) extends Params
 
-  type Type[A] = (wordVecMap.Type[A], combiner.Type[A])
-
-  override def apply[A](inst: Type[A])(input: Constant[Tree, A])(implicit field: Analytic[A]): WordVec[A] = {
-    val node = input.value
-    if (node.isLeaf) {
-      wordVecMap(inst._1)(Constant(node.value()))
-    } else {
-      node.children
-        .map(t => apply(inst)(Constant(t)))
-        .reduceLeft[WordVec[A]](combiner(inst._2)(_, _))
-    }
-  }
-
-  override implicit val space =
-    algebra.Product.locallyConcrete[wordVecMap.Type, combiner.Type](wordVecMap.space, combiner.space)
-
-  override def fill[A](x: => A)(implicit a: Additive[A]): Type[A] =
-    (Map().withDefault(_ => concrete.point(a.zero)), combiner.fill(x))
-}
-
-case class WrappedTree[A] (get: Tree) extends Traversable[String] {
-  override def foreach[U](f: (String) => U): Unit = {
-    f(get.value())
-    for (ch <- get.children()) {
-      WrappedTree(ch).foreach(f)
-    }
-  }
-
-  override def reduce[A1 >: String](op: (A1, A1) => A1): A1 = {
-    if (get.isLeaf) {
-      get.value()
-    } else {
-      get.children().map(ch => WrappedTree(ch).reduce(op)).reduce(op)
-    }
-  }
-}
-
-object Model {
-  import cml.models._
-  import cml.optimization._
-  import shapeless.Nat
-
-  /*
-   * First we declare types and implicits that we'll use in the model.
+class RNTN (params: RNTNParams) {
+  /**
+   * A mapping between sentiment vector indices and sentiment labels.
    */
-  implicit val treeFunctor = new Functor[WrappedTree] {
-    override def map[A, B](fa: WrappedTree[A])(f: (A) => B): WrappedTree[B] = WrappedTree(fa.get)
-  }
-  implicit val wordVec = algebra.Vector(Nat(5))
+  val sentiments = BiMap.stringInt(Array("No", "Yes", "NA"))
+
+  // First declare the sizes of our vectors. We use RuntimeNat here because the sizes depend on algorithm parameters.
+  val wordVecSize = algebra.RuntimeNat(params.wordVecSize)
+  val sentimentVecSize = algebra.RuntimeNat(sentiments.size)
+
+  // Now we create the types of vectors that we'll use. Note that the objects created here are not vectors,
+  // they are vector spaces. The type of a vector inside the space wordVec over a field F is wordVec.Type[F].
+  implicit val wordVec = algebra.Vector(wordVecSize())
+  implicit val sentimentVec = algebra.Vector(sentimentVecSize())
+
+  // Here we create a vector space of pairs of word vectors. And then a space of pairs of pairs..
   implicit val wordVecPair = algebra.Product[wordVec.Type, wordVec.Type]
-  implicit val sentimentVec = algebra.Vector(Nat(3))
+  implicit val wordVecPairPair = algebra.Product[wordVecPair.Type, wordVecPair.Type]
+
+  // Sentence tree not take a type parameter (because it doesn't depend on the field type). However model's input has
+  // to be a functor. We can create a functor from a tree by wrapping it in a constant functor.
+  type WrappedTree[A] = Const[Tree, A]
+
+  // Trees can be folded (reduced). We have to use the monomorphic variant, because Tree is not a functor - node values
+  // are strings and cannot be mapped to any other type.
+  implicit val treeMonoFoldable = new MonoFoldable1[Tree, String] {
+    override def foldMap1[S](v: Tree)(inj: (String) => S, op: (S, S) => S): S =
+      if (v.isLeaf) {
+        inj(v.value())
+      } else {
+        v.children().map(foldMap1(_)(inj, op)).reduce(op)
+      }
+  }
+
+  implicit val keys = Enumerate.string(Enumerate.char)
 
   /**
    * A recursive neural tensor network model.
    */
   val model: Model[WrappedTree, sentimentVec.Type] = Chain3(
-    MapReduce[String, WrappedTree, wordVec.Type](
-      map = Function[String, wordVec.Type]()(Enumerate.string(Enumerate.char), implicitly),
-      reduce = Chain3[wordVecPair.Type, algebra.Product[wordVecPair.Type, wordVecPair.Type]#Type, wordVec.Type, wordVec.Type](
-        Duplicate[wordVecPair.Type] : Model[wordVecPair.Type, algebra.Product[wordVecPair.Type, wordVecPair.Type]#Type],
-        LinAffinMap[wordVecPair.Type, wordVecPair.Type, wordVec.Type]
-          : Model[algebra.Product[wordVecPair.Type, wordVecPair.Type]#Type, wordVec.Type],
+    // Map-reduce the tree getting a word vector as the result.
+    MonoMapReduce[Tree, String, wordVec.Type](
+      // We map each word to a word vector using a hash map.
+      map = HashMap[String, wordVec.Type],
+      // Then we reduce the pair with a model that takes two word vectors and returns one.
+      // Type inference fails here and we have to provide the types of all immediate values.
+      reduce = Chain3[wordVecPair.Type, wordVecPairPair.Type, wordVec.Type, wordVec.Type](
+        // Duplicate takes a single argument x and returns (x, x).
+        Duplicate[wordVecPair.Type],
+        // LinAffinMap is a function on two arguments: linear in the first and affine in the second. This is
+        // equivalent to the sum of a billinear form (on both arguments) and a linear form on the first argument.
+        LinAffinMap[wordVecPair.Type, wordVecPair.Type, wordVec.Type],
+        // Apply the activaton function.
         Pointwise[wordVec.Type](AnalyticMap.tanh)
       )
-    ),
-
-    // First we reduce the sentence tree into a vector.
- //   RNTN[wordVec.Type]: Model[WrappedTree, wordVec.Type],
+    ) : Model[WrappedTree, wordVec.Type],
     // The next layer maps the word vector to a sentiment vector.
     AffineMap[wordVec.Type, sentimentVec.Type],
     // Finally we apply softmax.
@@ -126,21 +110,20 @@ object Model {
      * Computes the regularization term for a model instance.
      */
     override def regularization[V[_], A](instance: V[A])(implicit an: Analytic[A], space: LocallyConcrete[V]): A =
-      an.mul(an.fromDouble(7), space.quadrance(instance))
+      an.mul(an.fromDouble(params.regularizationCoeff), space.quadrance(instance))
   }
 
   /**
-   * Now we create an optimizer that will train our model. The MultiOpt optimizer is a higher-order optimizer that
-   * launches multiple optimizers in parallel and collects their results. We use gradient descent as our base optimizer.
+   * Now we create an optimizer that will train our model. We use adaptive gradient descent.
    *
    * Gradient descent takes an optional gradient transformer, which is a function applied to the gradient before a
    * step is made. Here we apply numerical stabilization and then AdaGrad to automatically take care of step size.
    */
   val optimizer = GradientDescent(
-      model,
-      iterations = 50,
-      gradTrans = Stabilize.andThen(AdaGrad).andThen(Scale(0.1))
-    )
+    model,
+    iterations = params.iterations,
+    gradTrans = Stabilize.andThen(AdaGrad).andThen(Scale(params.stepSize))
+  )
 
   /**
    * We need to declare what automatic differentiation engine should be used. Backpropagation is the best.
@@ -148,28 +131,21 @@ object Model {
   implicit val diffEngine = ad.Backward
 }
 
-/**
- * Wraps a model instance.
- */
-case class ModelInstance (
-  get: Model.model.Type[Double]
-)
-
-class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, SentenceTree] {
-
+class Algorithm (
+  params: RNTNParams
+) extends P2LAlgorithm[PreparedData, Any, Query, SentenceTree] {
   @transient lazy val logger = Logger[this.type]
 
   /**
    * Trains a model instance.
    */
-  def train(sc: SparkContext, data: PreparedData): ModelInstance = {
-    import Model._
-
-    println(data.sentences.length)
+  override def train(sc: SparkContext, data: PreparedData): Any = {
+    val rntn = new RNTN(params)
+    import rntn._
 
     // First we have to convert the data set to our model's input format.
     val dataSet = data.sentences.map { case (tree, expected) => {
-      val in: WrappedTree[Double] = WrappedTree(tree)
+      val in: WrappedTree[Double] = Const(tree)
       val index = sentiments(expected)
       val out: sentimentVec.Type[Double] = sentimentVec.tabulateLC(Map(index -> 1d))
       (in, out)
@@ -177,37 +153,32 @@ class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Sentenc
 
     // Value that the new model instances will be filled with.
     val rng = new Random()
-    val filler = () => rng.nextDouble * 2d - 1d
+    val noise = () => (rng.nextDouble * 2 - 1) * params.noise
 
     // Run the optimizer!
-    val inst =
-      optimizer[Double](
-        // This is the starting population, in case we want to improve existing instances.
-        // We do not have any trained model instances so we just pass an empty vector.
-        population = Vector(),
-        data = dataSet,
-        costFun = costFun,
-        default = filler())
+    optimizer[Double](
+      // This is the starting population, in case we want to improve existing instances.
+      // We do not have any trained model instances so we just pass an empty vector.
+      population = Vector(),
+      data = dataSet,
+      costFun = costFun,
+      default = noise())
       // Optimizer returns a vector of (cost, instance) pairs. Here we select the instance with the lowest cost.
       .minBy(_._1)._2
-      // And unfortunately we have to explicitly cast it to the right type. This is because scala doesn't know
-      // that model.Type = optimizer.model.Type, even thought it is quite obvious to us since model == optimizer.model.
-      .asInstanceOf[model.Type[Double]]
-
-    ModelInstance(inst)
   }
 
   /**
    * Queries the model.
    */
-  def predict(modelInstance: ModelInstance, query: Query): SentenceTree = {
-    import Model._
+  override def predict(inst: Any, query: Query): SentenceTree = {
+    val rntn = new RNTN(params)
+    import rntn._
 
     val noIndex = sentiments("No")
     val yesIndex = sentiments("Yes")
 
     def process(node: Tree): SentenceTree = {
-      val sent = model(modelInstance.get)(WrappedTree(node))
+      val sent = model(inst.asInstanceOf[model.Type[Double]])(Const(node))
       SentenceTree(
         label = node.value(),
         yes = sentimentVec.index(sent)(yesIndex),
@@ -219,9 +190,4 @@ class Algorithm extends P2LAlgorithm[PreparedData, ModelInstance, Query, Sentenc
     val tree = Parser(query.sentence)
     process(tree)
   }
-
-  /**
-   * A mapping between sentiment vector indices and sentiment labels.
-   */
-  val sentiments = BiMap.stringInt(Array("No", "Yes", "NA"))
 }

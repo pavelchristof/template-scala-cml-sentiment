@@ -14,8 +14,7 @@ libraryDependencies ++= Seq(
   "io.prediction" %% "core" % pioVersion.value % "provided",
   "org.apache.spark" %% "spark-core" % "1.3.0" % "provided",
   "org.xerial.snappy" % "snappy-java" % "1.1.1.7",
-  "com.chuusai" %% "shapeless" % "2.2.0-RC6",
   "com.github.tototoshi" %% "scala-csv" % "1.2.1",
-  "cml" %% "cml" % "0.1.2-SNAPSHOT",
-  "edu.stanford.nlp" % "stanford-parser" % "3.5.2"
+  "edu.stanford.nlp" % "stanford-parser" % "3.5.2",
+  "cml" %% "cml" % "0.1.2-SNAPSHOT"
 )
