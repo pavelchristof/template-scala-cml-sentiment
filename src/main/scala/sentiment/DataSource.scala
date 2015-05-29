@@ -16,13 +16,13 @@ class DataSource
   @transient lazy val logger = Logger[this.type]
 
   override def readTraining(sc: SparkContext): TrainingData = {
-    TrainingData(readData().take(2000))
+    TrainingData(readData())
   }
 
   override def readEval(sc: SparkContext): Seq[(TrainingData, EmptyEvaluationInfo, RDD[(Query, String)])] = {
-    val data = readData().take(100)
+    val data = readData()
 
-    val (training, eval) = data.splitAt(data.size * 3 / 4)
+    val (training, eval) = data.splitAt(data.size * 3 / 5)
     val rdd = sc.parallelize(eval)
     rdd.cache()
 
