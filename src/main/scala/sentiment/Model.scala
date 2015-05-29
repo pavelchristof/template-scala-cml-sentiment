@@ -74,7 +74,7 @@ class RNTN (params: RNTNParams) {
         // Duplicate takes a single argument x and returns (x, x).
         Duplicate[wordVecPair.Type],
         // LinAffinMap is a function on two arguments: linear in the first and affine in the second. This is
-        // equivalent to the sum of a billinear form (on both arguments) and a linear form on the first argument.
+        // equivalent to the sum of a bilinear form (on both arguments) and a linear form on the first argument.
         LinAffinMap[wordVecPair.Type, wordVecPair.Type, wordVec.Type],
         // Apply the activaton function.
         Pointwise[wordVec.Type](AnalyticMap.tanh)
