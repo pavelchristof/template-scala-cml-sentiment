@@ -14,7 +14,7 @@
         "wordVecSize": 5,
         "stepSize": 0.1,
         "regularizationCoeff": 5,
-        "iterations": 70,
+        "iterations": 10,
         "noise": 0.1
       }
     }

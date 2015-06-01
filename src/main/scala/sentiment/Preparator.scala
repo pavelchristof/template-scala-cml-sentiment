@@ -1,14 +1,11 @@
 package sentiment
 
 import edu.stanford.nlp.trees.Tree
-import io.prediction.controller.PPreparator
-import org.apache.spark.SparkContext
+import io.prediction.controller.LPreparator
 
-class Preparator
-  extends PPreparator[TrainingData, PreparedData] {
-
-  def prepare(sc: SparkContext, trainingData: TrainingData): PreparedData = {
-    new PreparedData(sentences = trainingData.sentences.map { case (a, b) => (Parser(a.sentence), b) })
+class Preparator extends LPreparator[TrainingData, PreparedData] {
+  override def prepare(trainingData: TrainingData): PreparedData = {
+    new PreparedData(sentences = trainingData.sentences.par.map { case (a, b) => (Parser(a.sentence), b) }.toArray)
   }
 }
 

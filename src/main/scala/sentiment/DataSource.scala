@@ -4,29 +4,23 @@ import java.io.File
 
 import grizzled.slf4j.Logger
 import io.prediction.controller._
-import org.apache.spark.SparkContext
 import com.github.tototoshi.csv._
-import org.apache.spark.rdd.RDD
 
 import scala.util.Random
 
 class DataSource
-  extends PDataSource[TrainingData, EmptyEvaluationInfo, Query, String] {
+  extends LDataSource[TrainingData, EmptyEvaluationInfo, Query, String] {
 
   @transient lazy val logger = Logger[this.type]
 
-  override def readTraining(sc: SparkContext): TrainingData = {
-    TrainingData(readData())
+  override def readTraining(): TrainingData = {
+    TrainingData(readData().take(50))
   }
 
-  override def readEval(sc: SparkContext): Seq[(TrainingData, EmptyEvaluationInfo, RDD[(Query, String)])] = {
-    val data = readData()
-
-    val (training, eval) = data.splitAt(data.size * 3 / 5)
-    val rdd = sc.parallelize(eval)
-    rdd.cache()
-
-    Seq((TrainingData(training), new EmptyEvaluationInfo(), rdd))
+  override def readEval(): Seq[(TrainingData, EmptyEvaluationInfo, Seq[(Query, String)])] = {
+    val data = readData().take(300)
+    val (training, eval) = data.splitAt(50)
+    Seq((TrainingData(training), new EmptyEvaluationInfo(), eval))
   }
 
   def readData(): Array[(Query, String)] = {

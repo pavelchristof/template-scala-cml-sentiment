@@ -2,7 +2,9 @@ package sentiment
 
 import io.prediction.controller.{Engine, EngineFactory}
 
-case class Query(sentence: String) extends Serializable
+case class Query(
+  sentence: String
+) extends Serializable
 
 case class SentenceTree (
   label: String,

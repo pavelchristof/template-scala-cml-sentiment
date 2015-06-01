@@ -1,20 +1,19 @@
 package sentiment
 
-import edu.stanford.nlp.trees.Tree
-import io.prediction.controller.{Params, P2LAlgorithm}
+import edu.stanford.nlp.trees.{SimpleTree, Tree}
+import io.prediction.controller.{LAlgorithm, Params, P2LAlgorithm}
 import io.prediction.data.storage.BiMap
 import org.apache.spark.SparkContext
 import grizzled.slf4j.Logger
 
 import scala.util.Random
 import scalaz._
-import Scalaz._
 
 import cml._
-import cml.algebra.traits._
-import cml.algebra.Instances._
+import cml.algebra._
 import cml.models._
 import cml.optimization._
+import Floating._
 
 case class RNTNParams (
   wordVecSize: Int,
@@ -34,18 +33,22 @@ class RNTN (params: RNTNParams) {
   val wordVecSize = algebra.RuntimeNat(params.wordVecSize)
   val sentimentVecSize = algebra.RuntimeNat(sentiments.size)
 
-  // Now we create the types of vectors that we'll use. Note that the objects created here are not vectors,
-  // they are vector spaces. The type of a vector inside the space wordVec over a field F is wordVec.Type[F].
-  implicit val wordVec = algebra.Vector(wordVecSize())
-  implicit val sentimentVec = algebra.Vector(sentimentVecSize())
+  // Now lets declare the types of vectors that we'll be using.
+  type WordVec[A] = Vec[wordVecSize.Type, A]
+  type SentimentVec[A] = Vec[sentimentVecSize.Type, A]
+  type WordVecPair[A] = (WordVec[A], WordVec[A])
+  type WordVecQuad[A] = (WordVecPair[A], WordVecPair[A])
 
-  // Here we create a vector space of pairs of word vectors. And then a space of pairs of pairs..
-  implicit val wordVecPair = algebra.Product[wordVec.Type, wordVec.Type]
-  implicit val wordVecPairPair = algebra.Product[wordVecPair.Type, wordVecPair.Type]
+  // We have to find the required implicits by hand because Scala doesn't support type classes.
+  implicit val wordVecSpace = Cartesian.vec(wordVecSize())
+  implicit val sentimentVecSpace = Cartesian.vec(sentimentVecSize())
+  implicit val wordVecPairSpace = Cartesian.product[WordVec, WordVec]
+  implicit val wordVecQuadSpace = Cartesian.product[WordVecPair, WordVecPair]
 
   // Sentence tree not take a type parameter (because it doesn't depend on the field type). However model's
   // input has to be a functor. We'll wrap the tree in a constant functor to get around that.
   type WrappedTree[A] = Const[Tree, A]
+  implicit val treeFunctor: ZeroFunctor[WrappedTree] = ZeroFunctor.const(new SimpleTree())
 
   // Trees can be folded (reduced). We have to use the monomorphic variant, because Tree is not a functor - node values
   // are strings and cannot be mapped to any other type.
@@ -54,74 +57,69 @@ class RNTN (params: RNTNParams) {
       if (v.isLeaf) {
         inj(v.value())
       } else {
-        v.children().map(foldMap1(_)(inj, op)).reduce(op)
+        v.children().map(foldMap1(_)(inj, op)).reduceLeft(op)
       }
   }
-
-  implicit val keys = Enumerate.string(Enumerate.char)
 
   /**
    * A recursive neural tensor network model.
    */
-  val model: Model[WrappedTree, sentimentVec.Type] = Chain3(
+  val model = Chain3(
     // Map-reduce the tree getting a word vector as the result.
     // The first parameter is the container type, the second is element type and the last is result type.
-    MonoMapReduce[Tree, String, wordVec.Type](
+    MonoMapReduce[Tree, String, WordVec](
       // We map each word to a word vector using a hash map.
-      map = HashMap[String, wordVec.Type],
+      map = HashMap[String, WordVec],
       // Then we reduce the pair with a model that takes two word vectors and returns one.
       // Type inference fails here and we have to provide the types of all immediate values.
-      reduce = Chain3[wordVecPair.Type, wordVecPairPair.Type, wordVec.Type, wordVec.Type](
+      reduce = Chain3[WordVecPair, WordVecQuad, WordVec, WordVec](
         // Duplicate takes a single argument x (of type wordVecType.Type) and returns (x, x).
-        Duplicate[wordVecPair.Type],
+        Duplicate[WordVecPair],
         // LinAffinMap is a function on two arguments: linear in the first and affine in the second. This is
         // equivalent to the sum of a bilinear form (on both arguments) and a linear form on the first argument.
-        // The first type parameter is the first argument's type, the second i the second argument's type and the
-        // last is the result type.
-        LinAffinMap[wordVecPair.Type, wordVecPair.Type, wordVec.Type],
+        // The type parameters are argument types and the result type.
+        LinAffinMap[WordVecPair, WordVecPair, WordVec],
         // Apply the activaton function pointwise over the word vector.
-        Pointwise[wordVec.Type](AnalyticMap.tanh)
+        Pointwise[WordVec](AnalyticMap.tanh)
       )
-    ) : Model[WrappedTree, wordVec.Type],
+    ) : Model[WrappedTree, WordVec],
     // We have a word vector now - we still have to classify it.
     // The next layer maps the word vector to a sentiment vector using an affine map (i.e. linear map with bias).
-    AffineMap[wordVec.Type, sentimentVec.Type],
+    AffineMap[WordVec, SentimentVec],
     // Finally we apply softmax.
-    Softmax[sentimentVec.Type]
+    Softmax[SentimentVec]
   )
 
   /**
    * The cost function for our model.
    */
-  val costFun = new CostFun[WrappedTree, sentimentVec.Type] {
+  val costFun = new CostFun[WrappedTree, SentimentVec] {
     /**
      * This function scores a single sample (input, expected output and actual output triple).
      *
      * The cost for the whole data set is assumed to be the mean of scores for each sample.
      */
-    override def scoreSample[A](sample: Sample[WrappedTree[A], sentimentVec.Type[A]])(implicit an: Analytic[A]): A = {
+    override def scoreSample[A](sample: Sample[WrappedTree[A], SentimentVec[A]])(implicit an: Analytic[A]): A = {
       import an.analyticSyntax._
-      val eps = fromDouble(0.0001)
+      val eps = fromDouble(1e-9)
 
       // Softmax regression cost function. We add epsilon to prevent taking the log of 0.
-      val j = ^(sample.expected, sample.actual){ case (e, a) =>
-        e * (a + eps).log
-      }
-      -sentimentVec.sum(j)
+      val j = sentimentVecSpace.apply2(sample.expected, sample.actual)((e, a) => e * (a + eps).log)
+      -sentimentVecSpace.sum(j)
     }
 
     /**
      * Computes the regularization term for a model instance.
      */
-    override def regularization[V[_], A](instance: V[A])(implicit an: Analytic[A], space: LocallyConcrete[V]): A =
+    override def regularization[V[_], A](instance: V[A])(implicit an: Analytic[A], space: Normed[V]): A =
       an.mul(an.fromDouble(params.regularizationCoeff), space.quadrance(instance))
   }
 
   /**
-   * Now we create an optimizer that will train our model. We use adaptive gradient descent.
+   * An optimizer is used to train the model.
    *
    * Gradient descent takes an optional gradient transformer, which is a function applied to the gradient before a
-   * step is made. Here we apply numerical stabilization and then AdaGrad to automatically take care of step size.
+   * step is made. Here we apply numerical stabilization and then AdaGrad, finally scaling the gradient.
    */
   val optimizer = GradientDescent(
     model,
@@ -137,13 +135,13 @@ class RNTN (params: RNTNParams) {
 
 class Algorithm (
   params: RNTNParams
-) extends P2LAlgorithm[PreparedData, Any, Query, SentenceTree] {
+) extends LAlgorithm[PreparedData, Any, Query, SentenceTree] {
   @transient lazy val logger = Logger[this.type]
 
   /**
    * Trains a model instance.
    */
-  override def train(sc: SparkContext, data: PreparedData): Any = {
+  override def train(data: PreparedData): Any = {
     val rntn = new RNTN(params)
     import rntn._
 
@@ -151,13 +149,17 @@ class Algorithm (
     val dataSet = data.sentences.map { case (tree, expected) => {
       val in: WrappedTree[Double] = Const(tree)
       val index = sentiments(expected)
-      val out: sentimentVec.Type[Double] = sentimentVec.tabulateLC(Map(index -> 1d))
+      val out = sentimentVecSpace.tabulatePartial(Map(index -> 1d))
       (in, out)
     }}
 
     // Value that the new model instances will be filled with.
     val rng = new Random()
-    val noise = () => (rng.nextDouble * 2 - 1) * params.noise
+    val noise = () => (rng.nextDouble * 2d - 1d) * params.noise
+
+    // Find the finite subspace of the model that we'll be using.
+    val subspace = optimizer.model.restrict(dataSet, costFun)
+    println(s"Model dimension: ${subspace.space.dim}")
 
     // Run the optimizer!
     optimizer[Double](
@@ -166,7 +168,8 @@ class Algorithm (
       population = Vector(),
       data = dataSet,
       costFun = costFun,
-      default = noise())
+      noise = noise(),
+      subspace = subspace)
       // Optimizer returns a vector of (cost, instance) pairs. Here we select the instance with the lowest cost.
       .minBy(_._1)._2
   }
@@ -185,8 +188,8 @@ class Algorithm (
       val sent = model(inst.asInstanceOf[model.Type[Double]])(Const(node))
       SentenceTree(
         label = node.value(),
-        yes = sentimentVec.index(sent)(yesIndex),
-        no = sentimentVec.index(sent)(noIndex),
+        yes = sentimentVecSpace.index(sent)(yesIndex),
+        no = sentimentVecSpace.index(sent)(noIndex),
         children = node.children().map(process)
       )
     }
