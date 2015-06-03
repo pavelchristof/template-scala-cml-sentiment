@@ -22,11 +22,17 @@ object SentimentEvaluation extends Evaluation with EngineParamsGenerator {
       metric = Accuracy()
     ))
 
-  engineParamsList = Seq(EngineParams(algorithmParamsList = Seq(("rntn", RNTNParams(
-    wordVecSize = 5,
-    stepSize = 1,
-    regularizationCoeff = 0.1,
-    iterations = 20,
-    noise = 0.1
-  )))))
+  engineParamsList = for (
+      reg <- Seq(0d, 0.01d);
+      ns <- Seq(1d, 0.1d)
+    ) yield EngineParams(
+      dataSourceParams = DataSourceParams(fraction = 1.0),
+      algorithmParamsList = Seq(("rntn", RNTNParams(
+        wordVecSize = 5,
+        stepSize = 0.01,
+        regularizationCoeff = reg,
+        iterations = 600,
+        noise = ns
+      )))
+    )
 }

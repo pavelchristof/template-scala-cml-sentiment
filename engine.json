@@ -2,9 +2,18 @@
   "id": "default",
   "description": "Default settings",
   "engineFactory": "sentiment.SentimentEngine",
+  "sparkConf": {
+      "spark": {
+        "executor": {
+          "memory": "10g"
+        },
+        "storage.memoryFraction": 0.1,
+        "driver.memory": "10g"
+      }
+  },
   "datasource": {
     "params" : {
-      "appName": "INVALID_APP_NAME"
+      "fraction": 0.2
     }
   },
   "algorithms": [
@@ -13,7 +22,7 @@
       "params": {
         "wordVecSize": 5,
         "stepSize": 0.1,
-        "regularizationCoeff": 5,
+        "regularizationCoeff": 0.01,
         "iterations": 10,
         "noise": 0.1
       }

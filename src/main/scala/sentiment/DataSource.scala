@@ -4,34 +4,38 @@ import java.io.File
 
 import grizzled.slf4j.Logger
 import io.prediction.controller._
+import org.apache.spark.SparkContext
 import com.github.tototoshi.csv._
+import org.apache.spark.rdd.RDD
 
 import scala.util.Random
 
-class DataSource
-  extends LDataSource[TrainingData, EmptyEvaluationInfo, Query, String] {
+case class DataSourceParams(
+  fraction: Double
+) extends Params
+
+class DataSource(params: DataSourceParams)
+  extends PDataSource[TrainingData, EmptyEvaluationInfo, Query, String] {
 
   @transient lazy val logger = Logger[this.type]
 
-  override def readTraining(): TrainingData = {
-    TrainingData(readData().take(50))
+  override def readTraining(sc: SparkContext): TrainingData = {
+    TrainingData(readData(sc))
   }
 
-  override def readEval(): Seq[(TrainingData, EmptyEvaluationInfo, Seq[(Query, String)])] = {
-    val data = readData().take(300)
-    val (training, eval) = data.splitAt(50)
-    Seq((TrainingData(training), new EmptyEvaluationInfo(), eval))
+  override def readEval(sc: SparkContext): Seq[(TrainingData, EmptyEvaluationInfo, RDD[(Query, String)])] = {
+    val Array(training, eval) = readData(sc).randomSplit(Array(0.6, 0.4))
+    Seq((TrainingData(training.cache()), new EmptyEvaluationInfo(), eval.cache()))
   }
 
-  def readData(): Array[(Query, String)] = {
+  def readData(sc: SparkContext): RDD[(Query, String)] = {
     val reader = CSVReader.open(new File("data/tweets.csv"))
     val data = for (row <- reader.all())
       yield (Query(row(0)), row(1))
-    val rng = new Random()
-    rng.shuffle(data).toArray
+    sc.parallelize(data, data.size / 100).sample(withReplacement = false, fraction = params.fraction)
   }
 }
 
 case class TrainingData(
-  sentences: Array[(Query, String)]
+  sentences: RDD[(Query, String)]
 ) extends Serializable

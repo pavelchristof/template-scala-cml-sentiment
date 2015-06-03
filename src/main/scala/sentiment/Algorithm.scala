@@ -1,19 +1,17 @@
 package sentiment
 
-import edu.stanford.nlp.trees.{SimpleTree, Tree}
-import io.prediction.controller.{LAlgorithm, Params, P2LAlgorithm}
-import io.prediction.data.storage.BiMap
-import org.apache.spark.SparkContext
-import grizzled.slf4j.Logger
-
-import scala.util.Random
-import scalaz._
-
 import cml._
+import cml.algebra.Floating._
 import cml.algebra._
 import cml.models._
 import cml.optimization._
-import Floating._
+import edu.stanford.nlp.trees.{SimpleTree, Tree}
+import grizzled.slf4j.Logger
+import io.prediction.controller.{P2LAlgorithm, Params}
+import io.prediction.data.storage.BiMap
+import org.apache.spark.SparkContext
+
+import scala.util.Random
 
 case class RNTNParams (
   wordVecSize: Int,
@@ -23,7 +21,7 @@ case class RNTNParams (
   noise: Double
 ) extends Params
 
-class RNTN (params: RNTNParams) {
+class RNTN (params: RNTNParams) extends Serializable {
   /**
    * A mapping between sentiment vector indices and sentiment labels.
    */
@@ -45,10 +43,9 @@ class RNTN (params: RNTNParams) {
   implicit val wordVecPairSpace = Cartesian.product[WordVec, WordVec]
   implicit val wordVecQuadSpace = Cartesian.product[WordVecPair, WordVecPair]
 
-  // Sentence tree not take a type parameter (because it doesn't depend on the field type). However model's
-  // input has to be a functor. We'll wrap the tree in a constant functor to get around that.
-  type WrappedTree[A] = Const[Tree, A]
-  implicit val treeFunctor: ZeroFunctor[WrappedTree] = ZeroFunctor.const(new SimpleTree())
+  // The input has to be a functor. Our Tree doesn't contain any numeric values so it has to be a constant functor.
+  type TreeFunc[A] = Tree
+  implicit val treeFunc: ZeroFunctor[TreeFunc] = ZeroFunctor.const(new SimpleTree())
 
   // Trees can be folded (reduced). We have to use the monomorphic variant, because Tree is not a functor - node values
   // are strings and cannot be mapped to any other type.
@@ -82,7 +79,7 @@ class RNTN (params: RNTNParams) {
         // Apply the activaton function pointwise over the word vector.
         Pointwise[WordVec](AnalyticMap.tanh)
       )
-    ) : Model[WrappedTree, WordVec],
+    ) : Model[TreeFunc, WordVec],
     // We have a word vector now - we still have to classify it.
     // The next layer maps the word vector to a sentiment vector using an affine map (i.e. linear map with bias).
     AffineMap[WordVec, SentimentVec],
@@ -93,13 +90,13 @@ class RNTN (params: RNTNParams) {
   /**
    * The cost function for our model.
    */
-  val costFun = new CostFun[WrappedTree, SentimentVec] {
+  val costFun = new CostFun[TreeFunc, SentimentVec] {
     /**
      * This function scores a single sample (input, expected output and actual output triple).
      *
      * The cost for the whole data set is assumed to be the mean of scores for each sample.
      */
-    override def scoreSample[A](sample: Sample[WrappedTree[A], SentimentVec[A]])(implicit an: Analytic[A]): A = {
+    override def scoreSample[A](sample: Sample[Tree, SentimentVec[A]])(implicit an: Analytic[A]): A = {
       import an.analyticSyntax._
       val eps = fromDouble(1e-9)
 
@@ -135,43 +132,44 @@ class RNTN (params: RNTNParams) {
 
 class Algorithm (
   params: RNTNParams
-) extends LAlgorithm[PreparedData, Any, Query, SentenceTree] {
+) extends P2LAlgorithm[PreparedData, Any, Query, SentenceTree] {
   @transient lazy val logger = Logger[this.type]
 
   /**
    * Trains a model instance.
    */
-  override def train(data: PreparedData): Any = {
+  override def train(sc: SparkContext, data: PreparedData): Any = {
     val rntn = new RNTN(params)
     import rntn._
 
     // First we have to convert the data set to our model's input format.
     val dataSet = data.sentences.map { case (tree, expected) => {
-      val in: WrappedTree[Double] = Const(tree)
       val index = sentiments(expected)
       val out = sentimentVecSpace.tabulatePartial(Map(index -> 1d))
-      (in, out)
-    }}
+      (tree, out)
+    }}.cache()
+
+    // Find the finite subspace of the model that we'll be using.
+    val t0 = System.currentTimeMillis()
+    val subspace = optimizer.model.restrict(dataSet, costFun)
+    println(s"Model dimension: ${subspace.space.dim}")
+    println(s"Reflection took ${System.currentTimeMillis() - t0}ms.")
 
     // Value that the new model instances will be filled with.
     val rng = new Random()
-    val noise = () => (rng.nextDouble * 2d - 1d) * params.noise
-
-    // Find the finite subspace of the model that we'll be using.
-    val subspace = optimizer.model.restrict(dataSet, costFun)
-    println(s"Model dimension: ${subspace.space.dim}")
+    val initialInst = subspace.space.tabulate(_ =>
+      (rng.nextDouble * 2d - 1d) * params.noise)
 
     // Run the optimizer!
-    optimizer[Double](
-      // This is the starting population, in case we want to improve existing instances.
-      // We do not have any trained model instances so we just pass an empty vector.
-      population = Vector(),
-      data = dataSet,
-      costFun = costFun,
-      noise = noise(),
-      subspace = subspace)
-      // Optimizer returns a vector of (cost, instance) pairs. Here we select the instance with the lowest cost.
-      .minBy(_._1)._2
+    val t1 = System.currentTimeMillis()
+    val inst = optimizer[Double](
+      subspace,
+      dataSet,
+      costFun,
+      initialInst)
+    println(s"Optimization took ${System.currentTimeMillis() - t1}ms.")
+
+    inst
   }
 
   /**
@@ -185,7 +183,7 @@ class Algorithm (
     val yesIndex = sentiments("Yes")
 
     def process(node: Tree): SentenceTree = {
-      val sent = model(inst.asInstanceOf[model.Type[Double]])(Const(node))
+      val sent = model(inst.asInstanceOf[model.Type[Double]])(node)
       SentenceTree(
         label = node.value(),
         yes = sentimentVecSpace.index(sent)(yesIndex),
