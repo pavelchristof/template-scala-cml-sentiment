@@ -5,24 +5,25 @@
   "sparkConf": {
       "spark": {
         "executor": {
-          "memory": "10g"
+          "memory": "12g"
         },
         "storage.memoryFraction": 0.1,
-        "driver.memory": "10g"
+        "driver.memory": "12g",
+        "kryo.classesToRegister": "cml.algebra.Vec"
       }
   },
   "datasource": {
     "params" : {
-      "fraction": 0.2
+      "fraction": 1
     }
   },
   "algorithms": [
     {
       "name": "rntn",
       "params": {
-        "wordVecSize": 5,
+        "wordVecSize": 10,
         "stepSize": 0.1,
-        "regularizationCoeff": 0.01,
+        "regularizationCoeff": 1e-6,
         "iterations": 10,
         "noise": 0.1
       }

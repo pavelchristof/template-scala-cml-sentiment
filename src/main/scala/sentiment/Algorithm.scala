@@ -5,13 +5,12 @@ import cml.algebra.Floating._
 import cml.algebra._
 import cml.models._
 import cml.optimization._
-import edu.stanford.nlp.trees.{SimpleTree, Tree}
 import grizzled.slf4j.Logger
 import io.prediction.controller.{P2LAlgorithm, Params}
-import io.prediction.data.storage.BiMap
 import org.apache.spark.SparkContext
 
 import scala.util.Random
+import scalaz.Semigroup
 
 case class RNTNParams (
   wordVecSize: Int,
@@ -22,55 +21,40 @@ case class RNTNParams (
 ) extends Params
 
 class RNTN (params: RNTNParams) extends Serializable {
-  /**
-   * A mapping between sentiment vector indices and sentiment labels.
-   */
-  val sentiments = BiMap.stringInt(Array("No", "Yes", "NA"))
-
-  // First declare the sizes of our vectors. We use RuntimeNat here because the sizes depend on algorithm parameters.
+  // First declare the size of our vectors. We use RuntimeNat here because the size depend on algorithm parameters.
   val wordVecSize = algebra.RuntimeNat(params.wordVecSize)
-  val sentimentVecSize = algebra.RuntimeNat(sentiments.size)
 
   // Now lets declare the types of vectors that we'll be using.
   type WordVec[A] = Vec[wordVecSize.Type, A]
-  type SentimentVec[A] = Vec[sentimentVecSize.Type, A]
+  type SentimentVec[A] = Sentiment.Vector[A]
   type WordVecPair[A] = (WordVec[A], WordVec[A])
   type WordVecQuad[A] = (WordVecPair[A], WordVecPair[A])
+  type Word[A] = String
+  type InputTree[A] = Tree[Unit, String]
+  type WordVecTree[A] = Tree[WordVec[A], String]
+  type OutputTree[A] = Tree[SentimentVec[A], String]
 
   // We have to find the required implicits by hand because Scala doesn't support type classes.
   implicit val wordVecSpace = Cartesian.vec(wordVecSize())
-  implicit val sentimentVecSpace = Cartesian.vec(sentimentVecSize())
+  implicit val sentimentVecSpace = Sentiment.space
   implicit val wordVecPairSpace = Cartesian.product[WordVec, WordVec]
   implicit val wordVecQuadSpace = Cartesian.product[WordVecPair, WordVecPair]
-
-  // The input has to be a functor. Our Tree doesn't contain any numeric values so it has to be a constant functor.
-  type TreeFunc[A] = Tree
-  implicit val treeFunc: ZeroFunctor[TreeFunc] = ZeroFunctor.const(new SimpleTree())
-
-  // Trees can be folded (reduced). We have to use the monomorphic variant, because Tree is not a functor - node values
-  // are strings and cannot be mapped to any other type.
-  implicit val treeMonoFoldable = new MonoFoldable1[Tree, String] {
-    override def foldMap1[S](v: Tree)(inj: (String) => S, op: (S, S) => S): S =
-      if (v.isLeaf) {
-        inj(v.value())
-      } else {
-        v.children().map(foldMap1(_)(inj, op)).reduceLeft(op)
-      }
-  }
+  implicit val inputTreeFunctor: ZeroFunctor[InputTree] = ZeroFunctor.const
+  implicit val outputTreeFunctor: ZeroFunctor[OutputTree] =
+    ZeroFunctor.compose[({type T[A] = Tree[A, String]})#T, SentimentVec](Tree.accumsZero[String], sentimentVecSpace)
 
   /**
    * A recursive neural tensor network model.
    */
-  val model = Chain3(
-    // Map-reduce the tree getting a word vector as the result.
-    // The first parameter is the container type, the second is element type and the last is result type.
-    MonoMapReduce[Tree, String, WordVec](
-      // We map each word to a word vector using a hash map.
-      map = HashMap[String, WordVec],
-      // Then we reduce the pair with a model that takes two word vectors and returns one.
-      // Type inference fails here and we have to provide the types of all immediate values.
+  val model = Chain2[InputTree, WordVecTree, OutputTree](
+    // In the first part of the algorithm we map each word to a vector and then propagate
+    // the vectors up the tree using a merge function.
+    AccumulateTree[Word, WordVec](
+      // The hash map that maps words to vectors.
+      inject = HashMap[String, WordVec],
+      // Merge function, taking a pair of vectors and returning a single vector.
       reduce = Chain3[WordVecPair, WordVecQuad, WordVec, WordVec](
-        // Duplicate takes a single argument x (of type wordVecType.Type) and returns (x, x).
+        // Duplicate takes a single argument x (of type WordVecPair) and returns (x, x).
         Duplicate[WordVecPair],
         // LinAffinMap is a function on two arguments: linear in the first and affine in the second. This is
         // equivalent to the sum of a bilinear form (on both arguments) and a linear form on the first argument.
@@ -79,30 +63,42 @@ class RNTN (params: RNTNParams) extends Serializable {
         // Apply the activaton function pointwise over the word vector.
         Pointwise[WordVec](AnalyticMap.tanh)
       )
-    ) : Model[TreeFunc, WordVec],
-    // We have a word vector now - we still have to classify it.
-    // The next layer maps the word vector to a sentiment vector using an affine map (i.e. linear map with bias).
-    AffineMap[WordVec, SentimentVec],
-    // Finally we apply softmax.
-    Softmax[SentimentVec]
+    ) : Model[InputTree, WordVecTree],
+
+    // In the second part we map over the tree to classify the word vectors.
+    BifunctorMap[Tree, WordVec, SentimentVec, Word, Word](
+      // Word vectors go thought a softmax classifier.
+      left = Chain2(
+        AffineMap[WordVec, SentimentVec],
+        Softmax[SentimentVec]
+      ),
+      // Words are unchanged.
+      right = Identity[Word]
+    )
   )
 
   /**
    * The cost function for our model.
    */
-  val costFun = new CostFun[TreeFunc, SentimentVec] {
+  val costFun = new CostFun[InputTree, OutputTree] {
     /**
      * This function scores a single sample (input, expected output and actual output triple).
      *
      * The cost for the whole data set is assumed to be the mean of scores for each sample.
      */
-    override def scoreSample[A](sample: Sample[Tree, SentimentVec[A]])(implicit an: Analytic[A]): A = {
+    override def scoreSample[A](sample: Sample[InputTree[A], OutputTree[A]])(implicit an: Analytic[A]): A = {
       import an.analyticSyntax._
       val eps = fromDouble(1e-9)
 
-      // Softmax regression cost function. We add epsilon to prevent taking the log of 0.
-      val j = sentimentVecSpace.apply2(sample.expected, sample.actual)((e, a) => e * (a + eps).log)
-      -sentimentVecSpace.sum(j)
+      // The cost function for single vectors.
+      def j(e: SentimentVec[A], a: SentimentVec[A]): A =
+        sentimentVecSpace.sum(sentimentVecSpace.apply2(e, a)((e, a) => e * (a + eps).log))
+
+      // We sum errors for each node.
+      val zipped = sample.expected.zip(sample.actual)
+      - Tree.accums.foldMap1(zipped)(x => j(x._1, x._2))(new Semigroup[A] {
+        override def append(f1: A, f2: => A): A = f1 + f2
+      })
     }
 
     /**
@@ -132,22 +128,17 @@ class RNTN (params: RNTNParams) extends Serializable {
 
 class Algorithm (
   params: RNTNParams
-) extends P2LAlgorithm[PreparedData, Any, Query, SentenceTree] {
+) extends P2LAlgorithm[TrainingData, Any, Query, Result] {
   @transient lazy val logger = Logger[this.type]
 
   /**
    * Trains a model instance.
    */
-  override def train(sc: SparkContext, data: PreparedData): Any = {
+  override def train(sc: SparkContext, data: TrainingData): Any = {
     val rntn = new RNTN(params)
     import rntn._
 
-    // First we have to convert the data set to our model's input format.
-    val dataSet = data.sentences.map { case (tree, expected) => {
-      val index = sentiments(expected)
-      val out = sentimentVecSpace.tabulatePartial(Map(index -> 1d))
-      (tree, out)
-    }}.cache()
+    val dataSet = data.get.map(x => (x._1.sentence, x._2.sentence))
 
     // Find the finite subspace of the model that we'll be using.
     val t0 = System.currentTimeMillis()
@@ -175,24 +166,16 @@ class Algorithm (
   /**
    * Queries the model.
    */
-  override def predict(inst: Any, query: Query): SentenceTree = {
+  override def predict(instUntyped: Any, query: Query): Result = {
     val rntn = new RNTN(params)
     import rntn._
 
-    val noIndex = sentiments("No")
-    val yesIndex = sentiments("Yes")
-
-    def process(node: Tree): SentenceTree = {
-      val sent = model(inst.asInstanceOf[model.Type[Double]])(node)
-      SentenceTree(
-        label = node.value(),
-        yes = sentimentVecSpace.index(sent)(yesIndex),
-        no = sentimentVecSpace.index(sent)(noIndex),
-        children = node.children().map(process)
-      )
+    val input = query match {
+      case TreeQuery(t) => t
+      case StringQuery(s) => Parser(s)
     }
+    val inst = instUntyped.asInstanceOf[model.Type[Double]]
 
-    val tree = Parser(query.sentence)
-    process(tree)
+    Result(model(inst)(input))
   }
 }

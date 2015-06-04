@@ -1,19 +1,51 @@
 package sentiment
 
+import cml.Tree
+import cml.algebra.{Cartesian, Vec, RuntimeNat}
 import io.prediction.controller.{Engine, EngineFactory}
+import io.prediction.data.storage.BiMap
 
-case class Query(
+sealed trait Query extends Serializable
+
+case class StringQuery (
   sentence: String
+) extends Query
+
+case class TreeQuery (
+  sentence: Tree[Unit, String]
+) extends Query
+
+case class Result (
+  sentence: Tree[Sentiment.Vector[Double], String]
 ) extends Serializable
 
-case class SentenceTree (
-  label: String,
+object Sentiment {
+  /**
+   * A mapping between sentiment vector indices and sentiment labels.
+   */
+  val classes = BiMap.stringInt(Array("0", "1", "2", "3", "4"))
 
-  yes: Double,
-  no: Double,
+  /**
+   * The number of sentiment classes as a type.
+   */
+  val size = RuntimeNat(classes.size)
 
-  children: Seq[SentenceTree]
-) extends Serializable
+  /**
+   * A vector of class probabilities.
+   */
+  type Vector[A] = Vec[size.Type, A]
+
+  /**
+   * The space of vectors of class probabilities.
+   */
+  implicit val space = Cartesian.vec(size())
+
+  /**
+   * Choose the label with the highest probability.
+   */
+  def choose[A](vec: Vector[A])(implicit ord: Ordering[A]): String =
+    classes.inverse(vec.get.zipWithIndex.maxBy(_._1)._2)
+}
 
 object SentimentEngine extends EngineFactory {
   def apply() = {
