@@ -5,3 +5,5 @@ project/project/target/
 pio.log
 /pio.sbt
 .idea/
+__pycache__/
+web/env/
