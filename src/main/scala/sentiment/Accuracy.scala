@@ -39,7 +39,7 @@ object SentimentEvaluation extends Evaluation with EngineParamsGenerator {
 
   engineParamsList = for (reg <- Seq(1d, 1e-6))
     yield EngineParams(
-      dataSourceParams = DataSourceParams(fraction = 1),
+      dataSourceParams = DataSourceParams(fraction = 1, batchSize = 10),
       algorithmParamsList = Seq(("rntn", RNTNParams(
         wordVecSize = 5,
         stepSize = 0.03,
