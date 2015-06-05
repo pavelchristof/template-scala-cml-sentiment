@@ -38,7 +38,7 @@ object Sentiment {
   /**
    * The space of vectors of class probabilities.
    */
-  implicit val space = Cartesian.vec(size())
+  implicit val space = Vec.cartesian(size())
 
   /**
    * Choose the label with the highest probability.

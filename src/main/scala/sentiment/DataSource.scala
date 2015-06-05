@@ -22,7 +22,7 @@ class DataSource(params: DataSourceParams)
 
   override def readTraining(sc: SparkContext): TrainingData = {
     val data = readPTB("data/train.txt").grouped(params.batchSize).toSeq
-    val rdd = sc.parallelize(data, 100)
+    val rdd = sc.parallelize(data)
       .sample(withReplacement = false, fraction = params.fraction).cache()
     TrainingData(rdd)
   }

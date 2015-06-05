@@ -35,7 +35,7 @@ class RNTN (params: RNTNParams) extends Serializable {
   type OutputTree[A] = Tree[SentimentVec[A], String]
 
   // We have to find the required implicits by hand because Scala doesn't support type classes.
-  implicit val wordVecSpace = Cartesian.vec(wordVecSize())
+  implicit val wordVecSpace = Vec.cartesian(wordVecSize())
   implicit val sentimentVecSpace = Sentiment.space
   implicit val wordVecPairSpace = Cartesian.product[WordVec, WordVec]
   implicit val wordVecQuadSpace = Cartesian.product[WordVecPair, WordVecPair]
@@ -50,7 +50,7 @@ class RNTN (params: RNTNParams) extends Serializable {
     // In the first part of the algorithm we map each word to a vector and then propagate
     // the vectors up the tree using a merge function.
     AccumulateTree[Word, WordVec](
-      // The hash map that maps words to vectors.
+      // The function that maps words to vectors.
       inject = HashMap[String, WordVec],
       // Merge function, taking a pair of vectors and returning a single vector.
       reduce = Chain3[WordVecPair, WordVecQuad, WordVec, WordVec](
@@ -138,23 +138,16 @@ class Algorithm (
     val rntn = new RNTN(params)
     import rntn._
 
-    val dataSet = data.get.map(x => (x._1.sentence, x._2.sentence))
-
-    // Find the finite subspace of the model that we'll be using.
-    val t0 = System.currentTimeMillis()
-    val subspace = optimizer.model.restrict(dataSet, costFun)
-    println(s"Model dimension: ${subspace.space.dim}")
-    println(s"Reflection took ${System.currentTimeMillis() - t0}ms.")
+    val dataSet = data.get.map(_.map(x => (x._1.sentence, x._2.sentence)))
 
     // Value that the new model instances will be filled with.
-    val rng = new Random()
-    val initialInst = subspace.space.tabulate(_ =>
+    val rng = new Random() with Serializable
+    val initialInst = optimizer.model.space.tabulate(_ =>
       (rng.nextDouble * 2d - 1d) * params.noise)
 
     // Run the optimizer!
     val t1 = System.currentTimeMillis()
     val inst = optimizer[Double](
-      subspace,
       dataSet,
       costFun,
       initialInst)

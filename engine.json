@@ -8,8 +8,7 @@
           "memory": "12g"
         },
         "storage.memoryFraction": 0.1,
-        "driver.memory": "12g",
-        "kryo.classesToRegister": "cml.algebra.Vec"
+        "driver.memory": "12g"
       }
   },
   "datasource": {
