@@ -14,14 +14,15 @@
   },
   "datasource": {
     "params" : {
-      "fraction": 1
+      "fraction": 0.01,
+      "batchSize": 30
     }
   },
   "algorithms": [
     {
       "name": "rntn",
       "params": {
-        "wordVecSize": 10,
+        "wordVecSize": 5,
         "stepSize": 0.1,
         "regularizationCoeff": 1e-6,
         "iterations": 10,
