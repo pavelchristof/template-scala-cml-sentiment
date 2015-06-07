@@ -22,14 +22,15 @@ class DataSource(params: DataSourceParams)
 
   override def readTraining(sc: SparkContext): TrainingData = {
     val data = readPTB("data/train.txt")
-    val rdd = sc.parallelize(data.take((data.size * params.fraction).toInt).grouped(params.batchSize).toSeq, 64)
+    val batches = data.take((data.size * params.fraction).toInt).grouped(params.batchSize)
+    val rdd = sc.parallelize(batches.toSeq, 64)
     TrainingData(rdd)
   }
 
   override def readEval(sc: SparkContext): Seq[(TrainingData, EmptyEvaluationInfo, RDD[(Query, Result)])] = {
-    val data = readPTB("data/train.txt").grouped(params.batchSize).toSeq
-    val training = sc.parallelize(data)
-      .sample(withReplacement = false, fraction = params.fraction).cache()
+    val data = readPTB("data/train.txt")
+    val batches = data.take((data.size * params.fraction).toInt).grouped(params.batchSize)
+    val training = sc.parallelize(batches.toSeq)
     val eval = sc.parallelize(readPTB("data/test.txt")).map(t => (Query(Right(t._1)), t._2))
     Seq((TrainingData(training), new EmptyEvaluationInfo(), eval))
   }
