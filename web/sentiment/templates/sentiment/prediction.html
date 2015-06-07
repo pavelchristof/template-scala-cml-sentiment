@@ -104,6 +104,9 @@ right connector from last child*/
 {% endblock %}
 
 {% block content %}
+    <div>
+        <script>console.debug({{ result|safe }})</script>
+    </div>
     <div style="display: flex">
         <div style="flex-grow: 1"></div>
         <div class="tree">

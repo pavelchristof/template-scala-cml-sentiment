@@ -7,24 +7,24 @@
         "executor": {
           "memory": "12g"
         },
-        "storage.memoryFraction": 0.1,
+        "storage.memoryFraction": 0.05,
         "driver.memory": "12g"
       }
   },
   "datasource": {
     "params" : {
-      "fraction": 0.01,
-      "batchSize": 30
+      "fraction": 1,
+      "batchSize": 25
     }
   },
   "algorithms": [
     {
       "name": "rntn",
       "params": {
-        "wordVecSize": 5,
+        "wordVecSize": 10,
         "stepSize": 0.1,
         "regularizationCoeff": 1e-6,
-        "iterations": 10,
+        "iterations": 500,
         "noise": 0.1
       }
     }

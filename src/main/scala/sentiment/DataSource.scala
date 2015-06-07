@@ -21,9 +21,8 @@ class DataSource(params: DataSourceParams)
   @transient lazy val logger = Logger[this.type]
 
   override def readTraining(sc: SparkContext): TrainingData = {
-    val data = readPTB("data/train.txt").grouped(params.batchSize).toSeq
-    val rdd = sc.parallelize(data)
-      .sample(withReplacement = false, fraction = params.fraction).cache()
+    val data = readPTB("data/train.txt")
+    val rdd = sc.parallelize(data.take((data.size * params.fraction).toInt).grouped(params.batchSize).toSeq, 64)
     TrainingData(rdd)
   }
 
@@ -31,11 +30,11 @@ class DataSource(params: DataSourceParams)
     val data = readPTB("data/train.txt").grouped(params.batchSize).toSeq
     val training = sc.parallelize(data)
       .sample(withReplacement = false, fraction = params.fraction).cache()
-    val eval = sc.parallelize(readPTB("data/test.txt")).map(t => (t._1: Query, t._2))
+    val eval = sc.parallelize(readPTB("data/test.txt")).map(t => (Query(Right(t._1)), t._2))
     Seq((TrainingData(training), new EmptyEvaluationInfo(), eval))
   }
 
-  def readPTB(path: String): Seq[(TreeQuery, Result)] = {
+  def readPTB(path: String): Seq[(Tree[Unit, String], Result)] = {
     val data = Source
       .fromFile(path)
       .getLines()
@@ -52,7 +51,7 @@ class DataSource(params: DataSourceParams)
       }
       // Filter out neutral sentences like the RNTN paper does.
       .filter(t => Sentiment.choose(t.accum) != "2")
-      .map(t => (TreeQuery(Tree.accums.map(t)(_ => ())), Result(t)))
+      .map(t => (Tree.accums.map(t)(_ => ()), Result(t)))
   }
 
   def sentVec(label: String): Sentiment.Vector[Double] =
@@ -69,5 +68,5 @@ class DataSource(params: DataSourceParams)
 }
 
 case class TrainingData(
-  get: RDD[Seq[(TreeQuery, Result)]]
+  get: RDD[Seq[(Tree[Unit, String], Result)]]
 ) extends Serializable

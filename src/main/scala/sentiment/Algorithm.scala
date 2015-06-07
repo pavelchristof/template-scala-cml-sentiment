@@ -51,7 +51,7 @@ class RNTN (params: RNTNParams) extends Serializable {
     // the vectors up the tree using a merge function.
     AccumulateTree[Word, WordVec](
       // The function that maps words to vectors.
-      inject = HashMap[String, WordVec],
+      inject = SetMap[String, WordVec],
       // Merge function, taking a pair of vectors and returning a single vector.
       reduce = Chain3[WordVecPair, WordVecQuad, WordVec, WordVec](
         // Duplicate takes a single argument x (of type WordVecPair) and returns (x, x).
@@ -114,7 +114,7 @@ class RNTN (params: RNTNParams) extends Serializable {
    * Gradient descent takes an optional gradient transformer, which is a function applied to the gradient before a
    * step is made. Here we apply numerical stabilization and then AdaGrad, finally scaling the gradient.
    */
-  val optimizer = GradientDescent(
+  val optimizer = StochasticGradientDescent(
     model,
     iterations = params.iterations,
     gradTrans = Stabilize.andThen(AdaGrad).andThen(Scale(params.stepSize))
@@ -138,7 +138,7 @@ class Algorithm (
     val rntn = new RNTN(params)
     import rntn._
 
-    val dataSet = data.get.map(_.map(x => (x._1.sentence, x._2.sentence)))
+    val dataSet = data.get.map(_.map(x => (x._1, x._2.sentence)))
 
     // Value that the new model instances will be filled with.
     val rng = new Random() with Serializable
@@ -163,9 +163,9 @@ class Algorithm (
     val rntn = new RNTN(params)
     import rntn._
 
-    val input = query match {
-      case TreeQuery(t) => t
-      case StringQuery(s) => Parser(s)
+    val input = query.sentence match {
+      case Left(s) => Parser(s)
+      case Right(t) => t
     }
     val inst = instUntyped.asInstanceOf[model.Type[Double]]
 

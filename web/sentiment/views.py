@@ -4,17 +4,19 @@ from predictionio import EngineClient
 
 
 def add_colors(node):
-    if len(node["children"]) > 0:
-        node["children"] = map(add_colors, node["children"])
-    if node["yes"] > node["no"] and 2 * node["yes"] > 1 - node["no"]:
-        c = 255 - int(node["yes"] * 255.0)
-        node["color"] = "#{:02X}FF{:02X}".format(c, c)
-    elif node["no"] > node["yes"] and 2 * node["no"] > 1 - node["yes"]:
-        c = 255 - int(node["no"] * 255.0)
-        node["color"] = "#FF{:02X}{:02X}".format(c, c)
+    r = dict()
+
+    if "value" in node:
+        r["label"] = node["value"]
     else:
-        node["color"] = "white"
-    return node
+        r["children"] = map(add_colors, [node["left"], node["right"]])
+
+    vec = node["accum"]["get"]
+    s = max([(t[1], t[0]) for t in enumerate(vec)])[1]
+    colors = ["red", "orange", "white", "LightGreen", "green"]
+    r["color"] = colors[s]
+
+    return r
 
 
 class IndexView(TemplateView):
@@ -23,4 +25,4 @@ class IndexView(TemplateView):
     def post(self, request):
         engine = EngineClient("http://localhost:8001")
         result = engine.send_query({'sentence': request.POST.get('sentence', '')})
-        return render(request, 'sentiment/prediction.html', {'node': add_colors(result)})
+        return render(request, 'sentiment/prediction.html', {'result': result, 'node': add_colors(result["sentence"])})

@@ -5,15 +5,9 @@ import cml.algebra.{Cartesian, Vec, RuntimeNat}
 import io.prediction.controller.{Engine, EngineFactory}
 import io.prediction.data.storage.BiMap
 
-sealed trait Query extends Serializable
-
-case class StringQuery (
-  sentence: String
-) extends Query
-
-case class TreeQuery (
-  sentence: Tree[Unit, String]
-) extends Query
+case class Query (
+  sentence: Either[String, Tree[Unit, String]]
+) extends Serializable
 
 case class Result (
   sentence: Tree[Sentiment.Vector[Double], String]

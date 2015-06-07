@@ -16,11 +16,11 @@ object Parser {
     val tokenizer = PTBTokenizer.newPTBTokenizer(reader, false, false)
     val tree = parser
       .parse(tokenizer.tokenize())
-      .transform(Normalize)
+      //.transform(Normalize)
     binarize(tree)
   }
 
-  val parserModel = "data/englishPCFG.caseless.ser.gz"
+  val parserModel = "data/englishPCFG.ser.gz"
   val parser = LexicalizedParser.loadModel(parserModel)
 
   object Normalize extends TreeTransformer {
