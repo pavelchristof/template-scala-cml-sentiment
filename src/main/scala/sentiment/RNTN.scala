@@ -20,7 +20,11 @@ case class RNTNParams (
   noise: Double
 ) extends Params
 
-class RNTN (params: RNTNParams) extends Serializable {
+class RNTN (
+  params: RNTNParams
+) extends P2LAlgorithm[TrainingData, Any, Query, Result] {
+  @transient lazy val logger = Logger[this.type]
+
   // First declare the size of our vectors. We use RuntimeNat here because the size depend on algorithm parameters.
   val wordVecSize = algebra.RuntimeNat(params.wordVecSize)
 
@@ -124,20 +128,11 @@ class RNTN (params: RNTNParams) extends Serializable {
    * We need to declare what automatic differentiation engine should be used. Backpropagation is the best.
    */
   implicit val diffEngine = ad.Backward
-}
-
-class Algorithm (
-  params: RNTNParams
-) extends P2LAlgorithm[TrainingData, Any, Query, Result] {
-  @transient lazy val logger = Logger[this.type]
 
   /**
    * Trains a model instance.
    */
   override def train(sc: SparkContext, data: TrainingData): Any = {
-    val rntn = new RNTN(params)
-    import rntn._
-
     val dataSet = data.get.map(_.map(x => (x._1, x._2.sentence)))
 
     // Value that the new model instances will be filled with.
@@ -160,9 +155,6 @@ class Algorithm (
    * Queries the model.
    */
   override def predict(instUntyped: Any, query: Query): Result = {
-    val rntn = new RNTN(params)
-    import rntn._
-
     val input = query.sentence match {
       case Left(s) => Parser(s)
       case Right(t) => t

@@ -46,7 +46,7 @@ object SentimentEngine extends EngineFactory {
     new Engine(
       classOf[DataSource],
       classOf[Preparator],
-      Map("rntn" -> classOf[Algorithm]),
+      Map("rntn" -> classOf[RNTN]),
       classOf[Serving])
   }
 }
