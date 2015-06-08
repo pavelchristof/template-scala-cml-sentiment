@@ -28,7 +28,7 @@ class MM (
   implicit val vecSpace = Vec.cartesian(vecSize())
   implicit val matrixMonoid = Monoid1.matrix[Vect]
 
-  val model = Chain2[InputTree, MatrixTree, OutputTree](
+  override val model = Chain2[InputTree, MatrixTree, OutputTree](
     AccumulateTree[Word, Matrix](
       inject = SetMap[String, Matrix],
       reduce = Chain2[MatrixPair, Matrix, Matrix](

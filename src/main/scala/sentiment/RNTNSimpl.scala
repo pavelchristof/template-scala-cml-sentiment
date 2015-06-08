@@ -13,7 +13,7 @@ case class RNTNSimplParams (
 ) extends AlgorithmParams
 
 class RNTNSimpl (
-  params: RNTNParams
+  params: RNTNSimplParams
 ) extends AlgorithmBase (params) {
   // First declare the size of our vectors. We use RuntimeNat here because the size depend on algorithm parameters.
   val wordVecSize = algebra.RuntimeNat(params.wordVecSize)
@@ -27,7 +27,7 @@ class RNTNSimpl (
   implicit val wordVecSpace = Vec.cartesian(wordVecSize())
   implicit val wordVecPairSpace = Cartesian.product[WordVec, WordVec]
 
-  val model = Chain2[InputTree, WordVecTree, OutputTree](
+  override val model = Chain2[InputTree, WordVecTree, OutputTree](
     // In the first part of the algorithm we map each word to a vector and then propagate
     // the vectors up the tree using a merge function.
     AccumulateTree[Word, WordVec](

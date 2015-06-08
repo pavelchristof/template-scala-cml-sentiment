@@ -29,7 +29,7 @@ class RNN (
   implicit val wordVecPairSpace = Cartesian.product[WordVec, WordVec]
   implicit val wordVecQuadSpace = Cartesian.product[WordVecPair, WordVecPair]
 
-  val model = Chain2[InputTree, WordVecTree, OutputTree](
+  override val model = Chain2[InputTree, WordVecTree, OutputTree](
     // In the first part of the algorithm we map each word to a vector and then propagate
     // the vectors up the tree using a merge function.
     AccumulateTree[Word, WordVec](

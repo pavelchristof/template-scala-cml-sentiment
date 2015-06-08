@@ -71,22 +71,22 @@ abstract class AlgorithmBase (
   implicit val diffEngine = ad.Backward
 
   /**
-   * An optimizer is used to train the model.
-   *
-   * Gradient descent takes an optional gradient transformer, which is a function applied to the gradient before a
-   * step is made. Here we apply numerical stabilization and then AdaGrad, finally scaling the gradient.
-   */
-  val optimizer = StochasticGradientDescent(
-    model,
-    iterations = params.iterations,
-    gradTrans = Stabilize.andThen(AdaGrad).andThen(Scale(params.stepSize))
-  )
-
-  /**
    * Trains a model instance.
    */
   override def train(sc: SparkContext, data: TrainingData): Any = {
     val dataSet = data.get.map(_.map(x => (x._1, x._2.sentence)))
+
+    /**
+     * An optimizer is used to train the model.
+     *
+     * Gradient descent takes an optional gradient transformer, which is a function applied to the gradient before a
+     * step is made. Here we apply numerical stabilization and then AdaGrad, finally scaling the gradient.
+     */
+    val optimizer = StochasticGradientDescent(
+      model,
+      iterations = params.iterations,
+      gradTrans = Stabilize.andThen(AdaGrad).andThen(Scale(params.stepSize))
+    )
 
     // Value that the new model instances will be filled with.
     val rng = new Random() with Serializable
