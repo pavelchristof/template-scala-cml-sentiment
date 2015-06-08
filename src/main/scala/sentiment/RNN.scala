@@ -4,7 +4,7 @@ import cml._
 import cml.algebra._
 import cml.models._
 
-case class RNTNParams (
+case class RNNParams (
   wordVecSize: Int,
   stepSize: Double,
   iterations: Int,
@@ -12,8 +12,8 @@ case class RNTNParams (
   noise: Double
 ) extends AlgorithmParams
 
-class RNTN (
-  params: RNTNParams
+class RNN (
+  params: RNNParams
 ) extends AlgorithmBase (params) {
   // First declare the size of our vectors. We use RuntimeNat here because the size depend on algorithm parameters.
   val wordVecSize = algebra.RuntimeNat(params.wordVecSize)
@@ -39,14 +39,8 @@ class RNTN (
       // The function that maps words to vectors.
       inject = SetMap[String, WordVec],
       // Merge function, taking a pair of vectors and returning a single vector.
-      reduce = Chain3[WordVecPair, WordVecQuad, WordVec, WordVec](
-        // Duplicate takes a single argument x (of type WordVecPair) and returns (x, x).
-        Duplicate[WordVecPair],
-        // LinAffinMap is a function on two arguments: linear in the first and affine in the second. This is
-        // equivalent to the sum of a bilinear form (on both arguments) and a linear form on the first argument.
-        // The type parameters are argument types and the result type.
-        LinAffinMap[WordVecPair, WordVecPair, WordVec],
-        // Apply the activaton function pointwise over the word vector.
+      reduce = Chain2(
+        AffineMap[WordVecPair, WordVec],
         Pointwise[WordVec](AnalyticMap.tanh)
       )
     ) : Model[InputTree, WordVecTree],
