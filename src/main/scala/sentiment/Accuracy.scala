@@ -73,7 +73,7 @@ object SentimentEvaluation extends Evaluation with EngineParamsGenerator {
       algorithmParamsList = Seq(
         ("mm", MMParams(
           vecSize = 15,
-          stepSize = 0.03,
+          stepSize = 0.02,
           regularizationCoeff = 1e-3,
           iterations = 20,
           noise = 0.1 // Better then 1.0
@@ -84,8 +84,8 @@ object SentimentEvaluation extends Evaluation with EngineParamsGenerator {
       dataSourceParams = DataSourceParams(fraction = 1, batchSize = 25),
       algorithmParamsList = Seq(
         ("rntn", RNTNParams(
-          wordVecSize = 7,
-          stepSize = 0.1,
+          wordVecSize = 10,
+          stepSize = 0.03,
           regularizationCoeff = 1e-3,
           iterations = 50,
           noise = 0.1 // Better then 1.0
@@ -95,9 +95,21 @@ object SentimentEvaluation extends Evaluation with EngineParamsGenerator {
     EngineParams(
       dataSourceParams = DataSourceParams(fraction = 1, batchSize = 25),
       algorithmParamsList = Seq(
-        ("rntns", RNTNParams(
-          wordVecSize = 7,
-          stepSize = 0.1,
+        ("rntnSimpl", RNTNSimplParams(
+          wordVecSize = 10,
+          stepSize = 0.03,
+          regularizationCoeff = 1e-3,
+          iterations = 50,
+          noise = 0.1 // Better then 1.0
+        ))
+      )
+    ),
+    EngineParams(
+      dataSourceParams = DataSourceParams(fraction = 1, batchSize = 25),
+      algorithmParamsList = Seq(
+        ("rntnSplit", RNTNSplitParams(
+          halfVecSize = 5,
+          stepSize = 0.03,
           regularizationCoeff = 1e-3,
           iterations = 50,
           noise = 0.1 // Better then 1.0
@@ -108,8 +120,8 @@ object SentimentEvaluation extends Evaluation with EngineParamsGenerator {
       dataSourceParams = DataSourceParams(fraction = 1, batchSize = 25),
       algorithmParamsList = Seq(
         ("rnn", RNNParams(
-          wordVecSize = 7,
-          stepSize = 0.1,
+          wordVecSize = 10,
+          stepSize = 0.03,
           regularizationCoeff = 1e-3,
           iterations = 50,
           noise = 0.1 // Better then 1.0
