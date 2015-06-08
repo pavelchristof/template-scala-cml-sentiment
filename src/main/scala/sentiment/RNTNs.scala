@@ -4,7 +4,7 @@ import cml._
 import cml.algebra._
 import cml.models._
 
-case class RNNParams (
+case class RNTNsParams (
   wordVecSize: Int,
   stepSize: Double,
   iterations: Int,
@@ -12,8 +12,8 @@ case class RNNParams (
   noise: Double
 ) extends AlgorithmParams
 
-class RNN (
-  params: RNNParams
+class RNTNs (
+  params: RNTNParams
 ) extends AlgorithmBase (params) {
   // First declare the size of our vectors. We use RuntimeNat here because the size depend on algorithm parameters.
   val wordVecSize = algebra.RuntimeNat(params.wordVecSize)
@@ -21,13 +21,11 @@ class RNN (
   // Now lets declare the types of vectors that we'll be using.
   type WordVec[A] = Vec[wordVecSize.Type, A]
   type WordVecPair[A] = (WordVec[A], WordVec[A])
-  type WordVecQuad[A] = (WordVecPair[A], WordVecPair[A])
   type WordVecTree[A] = Tree[WordVec[A], String]
 
   // We have to find the required implicits by hand because Scala doesn't support type classes.
   implicit val wordVecSpace = Vec.cartesian(wordVecSize())
   implicit val wordVecPairSpace = Cartesian.product[WordVec, WordVec]
-  implicit val wordVecQuadSpace = Cartesian.product[WordVecPair, WordVecPair]
 
   val model = Chain2[InputTree, WordVecTree, OutputTree](
     // In the first part of the algorithm we map each word to a vector and then propagate
@@ -36,8 +34,8 @@ class RNN (
       // The function that maps words to vectors.
       inject = SetMap[String, WordVec],
       // Merge function, taking a pair of vectors and returning a single vector.
-      reduce = Chain2(
-        AffineMap[WordVecPair, WordVec],
+      reduce = Chain2[WordVecPair, WordVec, WordVec](
+        BiaffineMap[WordVec, WordVec, WordVec],
         Pointwise[WordVec](AnalyticMap.tanh)
       )
     ) : Model[InputTree, WordVecTree],

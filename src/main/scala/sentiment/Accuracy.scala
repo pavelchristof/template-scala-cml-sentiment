@@ -95,6 +95,18 @@ object SentimentEvaluation extends Evaluation with EngineParamsGenerator {
     EngineParams(
       dataSourceParams = DataSourceParams(fraction = 1, batchSize = 25),
       algorithmParamsList = Seq(
+        ("rntns", RNTNParams(
+          wordVecSize = 7,
+          stepSize = 0.1,
+          regularizationCoeff = 1e-3,
+          iterations = 50,
+          noise = 0.1 // Better then 1.0
+        ))
+      )
+    ),
+    EngineParams(
+      dataSourceParams = DataSourceParams(fraction = 1, batchSize = 25),
+      algorithmParamsList = Seq(
         ("rnn", RNNParams(
           wordVecSize = 7,
           stepSize = 0.1,
