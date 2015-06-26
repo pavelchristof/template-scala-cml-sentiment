@@ -11,10 +11,20 @@ def add_colors(node):
     else:
         r["children"] = map(add_colors, [node["left"], node["right"]])
 
+    r["text_color"] = "black"
     vec = node["accum"]["get"]
-    s = max([(t[1], t[0]) for t in enumerate(vec)])[1]
-    colors = ["red", "orange", "white", "LightGreen", "green"]
-    r["color"] = colors[s]
+    c = -vec[0] - 0.5 * vec[1] + 0.5 * vec[3] + vec[4]
+    c *= 3
+    if c >= 0:
+        rb = max(0, 255 - int(c * 255.0))
+        print(rb)
+        r["color"] = "#{:02X}FF{:02X}".format(rb, rb)
+    else:
+        gb = max(0, 255 - int(-c * 255.0 * 1.5))
+        print(gb)
+        r["color"] = "#FF{:02X}{:02X}".format(gb, gb)
+        if c <= -0.5:
+            r["text_color"] = "white"
 
     return r
 

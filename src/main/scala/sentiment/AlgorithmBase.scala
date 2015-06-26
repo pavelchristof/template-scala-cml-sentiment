@@ -112,7 +112,7 @@ abstract class AlgorithmBase (
       case Left(s) => Parser(s)
       case Right(t) => t
     }
-    val inst = instUntyped.asInstanceOf[model.Type[Double]]
+    val inst = instUntyped.asInstanceOf[model.Params[Double]]
 
     Result(model(inst)(input))
   }

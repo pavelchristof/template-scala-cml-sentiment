@@ -27,12 +27,12 @@
 .tree li::before, .tree li::after{
 	content: '';
 	position: absolute; top: 0; right: 50%;
-	border-top: 1px solid #ccc;
+	border-top: 2px solid black;
 	width: 50%; height: 20px;
 }
 .tree li::after{
 	right: auto; left: 50%;
-	border-left: 1px solid #ccc;
+	border-left: 2px solid black;
 }
 
 /*We need to remove left-right connectors from elements without
@@ -51,7 +51,7 @@ right connector from last child*/
 }
 /*Adding back the vertical connector to the last nodes*/
 .tree li:last-child::before{
-	border-right: 1px solid #ccc;
+	border-right: 2px solid black;
 	border-radius: 0 5px 0 0;
 	-webkit-border-radius: 0 5px 0 0;
 	-moz-border-radius: 0 5px 0 0;
@@ -66,12 +66,12 @@ right connector from last child*/
 .tree ul ul::before{
 	content: '';
 	position: absolute; top: 0; left: 50%;
-	border-left: 1px solid #ccc;
+	border-left: 2px solid black;
 	width: 0; height: 20px;
 }
 
 .tree li .tree-label {
-	border: 1px solid #ccc;
+	border: 2px solid black;
 	padding: 5px 10px;
 	text-decoration: none;
     text-size: 18px;
@@ -88,19 +88,6 @@ right connector from last child*/
 	-moz-transition: all 0.5s;
 }
 
-/*Time for some hover effects*/
-/*We will apply the hover effect the the lineage of the element also*/
-.tree li .tree-label:hover, .tree li .tree-label:hover+ul li .tree-label {
-	background: #c8e4f8; color: #000; border: 1px solid #94a0b4;
-}
-
-/*Connector styles on hover*/
-.tree li .tree-label:hover+ul li::after,
-.tree li .tree-label:hover+ul li::before,
-.tree li .tree-label:hover+ul::before,
-.tree li .tree-label:hover+ul ul::before{
-	border-color:  #94a0b4;
-}
 {% endblock %}
 
 {% block content %}

@@ -28,17 +28,17 @@ class RNTNSplit (
   implicit val halfVecSpace = Vec.cartesian(halfVecSize())
   implicit val wordVecSpace = Cartesian.product[HalfVec, HalfVec]
 
-  object Tensor extends Model[WordVecPair, WordVec] {
+  case class Tensor () extends Model[WordVecPair, WordVec] {
     // Scala can't see the implicits that are right there /\
     val f4 = AffineMap[HalfVec, WordVec]()(halfVecSpace, wordVecSpace)
-    val f3 = AffineMap[HalfVec, f4.Type]()(halfVecSpace, f4.space)
-    val f2 = AffineMap[HalfVec, f3.Type]()(halfVecSpace, f3.space)
-    val f1 = AffineMap[HalfVec, f2.Type]()(halfVecSpace, f2.space)
+    val f3 = AffineMap[HalfVec, f4.Params]()(halfVecSpace, f4.space)
+    val f2 = AffineMap[HalfVec, f3.Params]()(halfVecSpace, f3.space)
+    val f1 = AffineMap[HalfVec, f2.Params]()(halfVecSpace, f2.space)
 
-    override type Type[A] = AffineMap[HalfVec, f2.Type]#Type[A]
+    override type Params[A] = AffineMap[HalfVec, f2.Params]#Params[A]
     override implicit val space = f1.space
 
-    override def apply[A](inst: Type[A])(in: WordVecPair[A])(implicit a: Analytic[A]): WordVec[A] = {
+    override def apply[A](inst: Params[A])(in: WordVecPair[A])(implicit a: Analytic[A]): WordVec[A] = {
       f4(f3(f2(f1(inst)(in._1._1))(in._1._2))(in._2._1))(in._2._2)
     }
   }
@@ -51,7 +51,7 @@ class RNTNSplit (
       inject = SetMap[String, WordVec],
       // Merge function, taking a pair of vectors and returning a single vector.
       reduce = Chain2(
-        Tensor,
+        Tensor(),
         Pointwise[WordVec](AnalyticMap.tanh)
       )
     ) : Model[InputTree, WordVecTree],

@@ -5,8 +5,9 @@
         <div style="flex-grow: 1"></div>
         <form method="POST" style="width:60%">
             {% csrf_token %}
-            <textarea type="text" style="height: 300px;" class="form-control" name="sentence" title="Sentence" placeholder="Enter a sentence..."></textarea>
-            <input class="form-control" type="submit">
+            <textarea type="text" style="height: 500px; font-size: 60px; border: 3px solid black" class="form-control"
+                      name="sentence" title="Sentence" placeholder="Enter a sentence..."></textarea>
+            <input class="form-control btn btn-success" style="font-size: 40px; height: 80px" type="submit">
         </form>
         <div style="flex-grow: 1"></div>
     </div>

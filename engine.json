@@ -19,9 +19,9 @@
   },
   "algorithms": [
     {
-      "name": "rntn",
+      "name": "rntnSplit",
       "params": {
-        "wordVecSize": 10,
+        "halfVecSize": 5,
         "stepSize": 0.1,
         "regularizationCoeff": 1e-6,
         "iterations": 500,
