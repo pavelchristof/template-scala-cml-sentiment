@@ -66,7 +66,7 @@ trait Model[In[_], Out[_]] extends Serializable {
   def apply[A](params: Params[A])(input: In[A])(implicit a: Analytic[A]): Out[A]
 }
 ```
-Each model has an input type In[\_], output type Out[\_], a parameter space Params[\_]. If you have a parameter vector, you can apply a model to some input, yielding some output. In our case the input type is Tree[Unit, String] (a binary tree with strings in the leafs and no information in the nodes) and the output type is Tree[SentimentVector, String] (a binary tree with strings in the leafs and a probability distribution over a set of classes in the nodes).
+Each model has an input type In[\_], output type Out[\_], a parameter space Params[\_]. If you have a parameter vector, you can apply a model to some input, yielding some output. In our case the input type is Tree\[Unit, String\] (a binary tree with strings in the leafs and no information in the nodes) and the output type is Tree\[SentimentVector, String\] (a binary tree with strings in the leafs and a probability distribution over a set of classes in the nodes).
 
 Models can be implemented directly, however CML provides a library of basic models (linear functions, scalar functions applied pointwise, tensors, map/reduce). Furthermore, models can be composed, i.e. if we have a model going from A to B and another from B to C the composition will take the input of type A and yield output of type C.
 
