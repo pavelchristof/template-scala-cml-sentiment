@@ -13,18 +13,18 @@
   },
   "datasource": {
     "params" : {
-      "fraction": 1,
+      "fraction": 0.1,
       "batchSize": 25
     }
   },
   "algorithms": [
     {
-      "name": "rntnSplit",
+      "name": "rnn",
       "params": {
-        "halfVecSize": 5,
+        "wordVecSize": 3,
         "stepSize": 0.1,
         "regularizationCoeff": 1e-6,
-        "iterations": 500,
+        "iterations": 10,
         "noise": 0.1
       }
     }

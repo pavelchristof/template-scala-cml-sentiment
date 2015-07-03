@@ -2,7 +2,7 @@ import AssemblyKeys._
 
 assemblySettings
 
-name := "template-scala-parallel-vanilla"
+name := "template-scala-cml-sentiment"
 
 organization := "io.prediction"
 
@@ -16,5 +16,5 @@ libraryDependencies ++= Seq(
   "org.xerial.snappy" % "snappy-java" % "1.1.1.7",
   "com.github.tototoshi" %% "scala-csv" % "1.2.1",
   "edu.stanford.nlp" % "stanford-parser" % "3.5.2",
-  "cml" %% "cml" % "0.1.2-SNAPSHOT"
+  "cml" %% "cml" % "0.2.0"
 )

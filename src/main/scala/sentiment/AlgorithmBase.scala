@@ -27,9 +27,9 @@ abstract class AlgorithmBase (
   type InputTree[A] = Tree[Unit, String]
   type OutputTree[A] = Tree[Sentiment.Vector[A], String]
 
-  implicit val inputTreeFunctor: ZeroFunctor[InputTree] = ZeroFunctor.const
-  implicit val outputTreeFunctor: ZeroFunctor[OutputTree] =
-    ZeroFunctor.compose[({type T[A] = Tree[A, String]})#T, Sentiment.Vector](Tree.accumsZero[String], Sentiment.space)
+  implicit val inputTreeFunctor: Functor[InputTree] = Functor.const
+  implicit val outputTreeFunctor: Functor[OutputTree] =
+    Functor.compose[({type T[A] = Tree[A, String]})#T, Sentiment.Vector](Tree.accumsZero[String], Sentiment.space)
   implicit val sentimentVecSpace = Sentiment.space
 
   val model: Model[InputTree, OutputTree]
