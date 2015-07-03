@@ -75,7 +75,7 @@ CML uses automatic differentiation to compute the gradients require to optimize 
 Building
 =====
 
-Nothing unusual:
+Run the standard command:
 ```bash
 > pio build
 ```
