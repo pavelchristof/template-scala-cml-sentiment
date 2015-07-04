@@ -61,7 +61,7 @@ trait Model[In[_], Out[_]] extends Serializable {
   /**
    * Parameters must form a representable vector space.
    */
-  implicit val space: Representable[Params]
+  implicit val params: Representable[Params]
 
   /**
    * Applies the model to some input.
