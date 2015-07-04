@@ -90,7 +90,7 @@ abstract class AlgorithmBase (
 
     // Value that the new model instances will be filled with.
     val rng = new Random() with Serializable
-    val initialInst = optimizer.model.space.tabulate(_ =>
+    val initialInst = optimizer.model.params.tabulate(_ =>
       (rng.nextDouble * 2d - 1d) * params.noise)
 
     // Run the optimizer!

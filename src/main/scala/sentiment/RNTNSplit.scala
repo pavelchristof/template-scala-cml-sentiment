@@ -31,12 +31,12 @@ class RNTNSplit (
   case class Tensor () extends Model[WordVecPair, WordVec] {
     // Scala can't see the implicits that are right there /\
     val f4 = AffineMap[HalfVec, WordVec]()(halfVecSpace, wordVecSpace)
-    val f3 = AffineMap[HalfVec, f4.Params]()(halfVecSpace, f4.space)
-    val f2 = AffineMap[HalfVec, f3.Params]()(halfVecSpace, f3.space)
-    val f1 = AffineMap[HalfVec, f2.Params]()(halfVecSpace, f2.space)
+    val f3 = AffineMap[HalfVec, f4.Params]()(halfVecSpace, f4.params)
+    val f2 = AffineMap[HalfVec, f3.Params]()(halfVecSpace, f3.params)
+    val f1 = AffineMap[HalfVec, f2.Params]()(halfVecSpace, f2.params)
 
     override type Params[A] = AffineMap[HalfVec, f2.Params]#Params[A]
-    override implicit val space = f1.space
+    override implicit val params = f1.params
 
     override def apply[A](inst: Params[A])(in: WordVecPair[A])(implicit a: Analytic[A]): WordVec[A] = {
       f4(f3(f2(f1(inst)(in._1._1))(in._1._2))(in._2._1))(in._2._2)
