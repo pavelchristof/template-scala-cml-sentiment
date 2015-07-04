@@ -10,8 +10,16 @@ Installation
 
 First, you need to download and install a modified version of scalaz (with enabled serialization):
 ```bash
-> git clone https://github.com/pawel-n/scalaz
+> git clone http://github.com/pawel-n/scalaz
 > cd scalaz
+> sbt publishLocal
+```
+
+Then, install CML:
+
+```bash
+> git clone http://github.com/pawel-n/cml
+> cd cml
 > sbt publishLocal
 ```
 
