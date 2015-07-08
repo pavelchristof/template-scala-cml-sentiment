@@ -25,7 +25,7 @@ Then, install CML:
 
 Next, get the template:
 ```bash
-> pio template get template-scala-cml-sentiment <EngineDir>
+> pio template get pawel-n/template-scala-cml-sentiment <EngineDir>
 > cd <EngineDir>
 ```
 
